@@ -1,4 +1,4 @@
-# Beteseb Bingo — Multiplayer Server
+# Kefay Bingo — Multiplayer Server
 
 Real-time multiplayer Bingo game with WebSocket server.
 
@@ -90,7 +90,7 @@ To run inside Telegram, wrap the frontend URL in a Telegram Bot:
 ```javascript
 // In your Telegram bot
 bot.command('play', (ctx) => {
-  ctx.reply('Play Beteseb Bingo!', {
+  ctx.reply('Play Kefay Bingo!', {
     reply_markup: {
       inline_keyboard: [[{
         text: '🎱 Play Now',

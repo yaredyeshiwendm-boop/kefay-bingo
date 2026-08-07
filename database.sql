@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════
---  BETESEB BINGO — PostgreSQL Database Schema
+--  KEFAY BINGO — PostgreSQL Database Schema
 --  Run this file once to set up all tables
 --  Command: psql -U postgres -d beteseb_bingo -f database.sql
 -- ════════════════════════════════════════════════════════════════

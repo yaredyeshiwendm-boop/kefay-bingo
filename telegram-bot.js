@@ -1,5 +1,5 @@
 /**
- * telegram-bot.js — Beteseb Bingo Telegram Bot
+ * telegram-bot.js — Kefay Bingo Telegram Bot
  * 
  * Install: npm install node-telegram-bot-api
  * Set env:  BOT_TOKEN=your_telegram_bot_token
@@ -31,7 +31,7 @@ bot.onText(/\/start/, async (msg) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{
-            text: '🎮 Play Beteseb Bingo',
+            text: '🎮 Play Kefay Bingo',
             web_app: { url: `${GAME_URL}?tid=${telegramId}` }
           }]]
         }
@@ -43,7 +43,7 @@ bot.onText(/\/start/, async (msg) => {
   pendingPhone[telegramId] = { name: firstName, step: 'ask_name' };
 
   bot.sendMessage(msg.chat.id,
-    `👋 Welcome to *Beteseb Bingo!*\n\nLet's get you registered.\nWhat should we call you?`,
+    `👋 Welcome to *Kefay Bingo!*\n\nLet's get you registered.\nWhat should we call you?`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -97,7 +97,7 @@ bot.on('contact', async (msg) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{
-            text: '🎮 Play Beteseb Bingo',
+            text: '🎮 Play Kefay Bingo',
             web_app: { url: `${GAME_URL}?tid=${telegramId}` }
           }]],
           keyboard: [['🎮 Play', '💰 Balance', '📊 Leaderboard']],
@@ -139,7 +139,7 @@ bot.onText(/\/play|🎮 Play/, async (msg) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{
-          text: '🎮 Open Beteseb Bingo',
+          text: '🎮 Open Kefay Bingo',
           web_app: { url: `${GAME_URL}?tid=${msg.from.id}` }
         }]]
       }
@@ -147,4 +147,4 @@ bot.onText(/\/play|🎮 Play/, async (msg) => {
   );
 });
 
-console.log('🤖 Beteseb Bingo Telegram Bot running...');
+console.log('🤖 Kefay Bingo Telegram Bot running...');

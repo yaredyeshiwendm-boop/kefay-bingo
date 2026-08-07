@@ -1,5 +1,5 @@
 /**
- * db.js — PostgreSQL database layer for Beteseb Bingo
+ * db.js — PostgreSQL database layer for Kefay Bingo
  * 
  * Install: npm install pg
  * Set env:  DATABASE_URL=postgresql://user:pass@host:5432/beteseb_bingo

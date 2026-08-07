@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-<title>Beteseb Bingo</title>
+<title>Kefay Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -219,7 +219,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 <body>
 
 <div class="navbar">
-  <div class="brand">BETESEB BINGO <span class="dot" id="connDot"></span></div>
+  <div class="brand">KEFAY BINGO <span class="dot" id="connDot"></span></div>
   <div style="display:flex;align-items:center;gap:10px">
     <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
     <div class="balance-pill" id="balanceEl" onclick="goToWallet()">ETB 0.00</div>
@@ -327,11 +327,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       </div>
       <div class="telebirr-label">Send to this Telebirr number</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0">
-        <div class="telebirr-number" id="telebirrNumber">0967423275</div>
+        <div class="telebirr-number" id="telebirrNumber">0940754834</div>
         <button onclick="copyPhone()" id="copyBtn" style="background:rgba(250,204,21,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">📋 Copy</button>
       </div>
-      <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Lidetua</div>
-      <div style="font-size:11px;color:var(--gray);margin-top:2px">Beteseb Bingo</div>
+      <div class="telebirr-name" id="telebirrName" style="font-size:13px;color:#fff;font-weight:600">Yared</div>
+      <div style="font-size:11px;color:var(--gray);margin-top:2px">Kefay Bingo</div>
     </div>
       <!-- Amharic Deposit Steps -->
 <div style="background:var(--panel);border:1px solid #3c2463;border-radius:14px;padding:16px;margin-bottom:16px">
@@ -340,7 +340,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
     <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
       <div style="width:30px;height:30px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">1</div>
-      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከላይ ያለውን <strong style="color:#fff" id="depositStepNumber">0967423275</strong> የቴሌብር ቁጥር copy ያድርጉ ወይም ያስታውሱ</div>
+      <div style="font-size:12px;color:var(--gold);line-height:1.6">ከላይ ያለውን <strong style="color:#fff" id="depositStepNumber">0940754834</strong> የቴሌብር ቁጥር copy ያድርጉ ወይም ያስታውሱ</div>
     </div>
 
     <div style="background:var(--card);border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px">
@@ -374,7 +374,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
    <div class="form-group">
   <label class="form-label">Paste your full Telebirr SMS message</label>
-  <textarea class="form-input" id="depositTxRef" placeholder="Paste the full SMS here e.g: Your transaction of ETB 50.00 to 0967423275 is confirmed. Ref: TXN123456789..." rows="4" style="resize:none;line-height:1.6"></textarea>
+  <textarea class="form-input" id="depositTxRef" placeholder="Paste the full SMS here e.g: Your transaction of ETB 50.00 to 0940754834 is confirmed. Ref: TXN123456789..." rows="4" style="resize:none;line-height:1.6"></textarea>
   <div id="txnPreview" style="display:none;margin-top:8px;background:rgba(34,197,94,.1);border:1px solid var(--green);border-radius:8px;padding:10px;font-size:13px;color:var(--green)">
     ✅ Reference found: <strong id="txnFound"></strong>
   </div>
@@ -441,11 +441,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:900;color:var(--gold);margin-bottom:14px">💳 Telebirr Payment Account</div>
       <div class="form-group">
         <label class="form-label">Telebirr Number</label>
-        <input class="form-input" type="text" id="settingsTelebirrNumber" placeholder="e.g. 0967423275">
+        <input class="form-input" type="text" id="settingsTelebirrNumber" placeholder="e.g. 0940754834">
       </div>
       <div class="form-group">
         <label class="form-label">Account Holder Name</label>
-        <input class="form-input" type="text" id="settingsTelebirrName" placeholder="e.g. Lidetua">
+        <input class="form-input" type="text" id="settingsTelebirrName" placeholder="e.g. Yared">
       </div>
  <button class="btn-submit btn-green" onclick="adminSavePaymentSettings()">💾 Save Changes</button>
       <div id="settingsMsg" style="display:none" class="status-msg"></div>
@@ -521,7 +521,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div style="background:linear-gradient(135deg,#2d1b4e,#1a0a3e);border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:1px solid #6d28d9">
     <div style="font-size:36px;margin-bottom:8px">📋</div>
     <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:var(--gold)">የቢንጎ ጨዋታ ሕጎች</div>
-    <div style="font-size:12px;color:var(--gray);margin-top:4px">Beteseb Bingo Rules</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:4px">Kefay Bingo Rules</div>
   </div>
 
   <!-- Section 1: Card Selection -->
