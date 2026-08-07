@@ -727,7 +727,7 @@ break;
         // ── Deposit request ──
         case 'depositRequest':{
           const{amount,txRef}=msg;
-          if(!amount||amount<10) return send(ws,{type:'error',message:'Minimum deposit is 10 ETB.'});
+          if(!amount||amount<50) return send(ws,{type:'error',message:'Minimum deposit is 50 ETB.'});
           if(!txRef||!txRef.trim()) return send(ws,{type:'error',message:'Transaction reference required.'});
           if(!client.telegramId) return send(ws,{type:'error',message:'Please register first via the Telegram bot (/start).'});
           if(db){
@@ -748,7 +748,7 @@ break;
         // ── Withdrawal request ──
         case 'withdrawalRequest':{
           const{amount}=msg;
-          if(!amount||amount<50) return send(ws,{type:'error',message:'Minimum withdrawal is 50 ETB.'});
+          if(!amount||amount<100) return send(ws,{type:'error',message:'Minimum withdrawal is 100 ETB.'});
           if(client.balance<amount) return send(ws,{type:'error',message:'Insufficient balance.'});
           if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
           if(db){
@@ -1026,7 +1026,24 @@ function startTelegramBot(){
   }
 }
 
-  bot.onText(/\/start/, msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
+  bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
+  const tid = msg.from.id;
+  const refCode = match && match[1];
+
+  if (refCode && refCode.startsWith('ref_')) {
+    const referrerId = refCode.substring(4);
+
+    if (referrerId !== String(tid)) {
+      console.log(`🔗 Referral: ${tid} came from ${referrerId}`);
+    }
+  }
+
+  await showMainMenu(
+    msg.chat.id,
+    tid,
+    msg.from.first_name
+  );
+});
 bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
 
   bot.onText(/\/balance/, async msg => {
