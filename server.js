@@ -525,12 +525,12 @@ function leaveRoom(client){
 // ─── WEBSOCKET ────────────────────────────────────────────────
 wss.on('connection',(ws)=>{
   const playerId=uuidv4();
-  const client={playerId,playerName:'',telegramId:null,balance:0,roomId:null,isAdmin:false,ws};
+  const client={playerId,playerName:'',telegramId:null,balance:10,roomId:null,isAdmin:false,ws};
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
     return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
-  send(ws,{type:'connected',playerId,balance:0,stakes:lobbyStakes});
+  send(ws,{type:'connected',playerId,balance:10,stakes:lobbyStakes});
 
   ws.on('message',async raw=>{
     try{
@@ -560,7 +560,7 @@ wss.on('connection',(ws)=>{
           send(ws,{type:'authSuccess',playerName:user.name,balance:user.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
           } else {
             client.telegramId=tid;
-            send(ws,{type:'authSuccess',playerName:'',balance:0,isRegistered:false,isAdmin:false});
+            send(ws,{type:'authSuccess',playerName:'',balance:10,isRegistered:false,isAdmin:false});
           }
           break;
         }
@@ -1150,7 +1150,7 @@ bot.on('contact', async msg => {
         userCache[String(tid)] = { name, phone, balance, isAdmin: isAdminPhone(phone) };
       } catch(e){ console.error('createUser error:', e.message); }
     } else {
-      userCache[String(tid)] = { name, phone, balance:0, isAdmin: isAdminPhone(phone) };
+      userCache[String(tid)] = { name, phone, balance:10, isAdmin: isAdminPhone(phone) };
     }
     bot.sendMessage(msg.chat.id,
       `✅ *Registered Successfully!*\n\n👤 Name: *${name}*\n📱 Phone: ${phone}\n💰 Balance: *${balance} ETB*\n\nDeposit ETB to start playing! 🎱`,
