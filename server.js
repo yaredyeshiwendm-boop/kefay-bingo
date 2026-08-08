@@ -1027,22 +1027,38 @@ function startTelegramBot(){
 }
 
   bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
-  const tid = msg.from.id;
-  const refCode = match && match[1];
+    const tid = msg.from.id;
+    const refCode = match && match[1];
 
-  if (refCode && refCode.startsWith('ref_')) {
-    const referrerId = refCode.substring(4);
+    if (refCode && refCode.startsWith('ref_')) {
+      const referrerId = refCode.substring(4);
 
-    if (referrerId !== String(tid)) {
-      console.log(`🔗 Referral: ${tid} came from ${referrerId}`);
+      if (referrerId !== String(tid) && db) {
+        try {
+          const existing = await db.getUser(String(tid));
+
+          if (existing && !existing.referrer_id) {
+            await db.q(
+              `UPDATE users
+               SET referrer_id=$1
+               WHERE telegram_id=$2
+               AND referrer_id IS NULL`,
+              [String(referrerId), String(tid)]
+            );
+
+            console.log(`🔗 Referral saved: ${tid} came from ${referrerId}`);
+          }
+        } catch (e) {
+          console.error('Referral save error:', e.message);
+        }
+      }
     }
-  }
 
-  await showMainMenu(
-    msg.chat.id,
-    tid,
-    msg.from.first_name
-  );
+    await showMainMenu(
+      msg.chat.id,
+      tid,
+      msg.from.first_name
+    );
 });
 bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
 
@@ -1116,13 +1132,15 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
     }
 
     else if(text === '🎁 Invite Friends'){
-      const me = await bot.getMe();
-      const link = `https://t.me/${me.username}?start=ref_${tid}`;
-      bot.sendMessage(msg.chat.id,
-        `🎁 *Invite Friends & Earn!*\n\nShare your link:\n${link}\n\n_Coming soon: earn bonus ETB for every friend who joins!_`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
-      );
-    }
+  const me = await bot.getMe();
+  const link = `https://t.me/${me.username}?start=ref_${tid}`;
+
+  bot.sendMessage(
+    msg.chat.id,
+    `🎁 Invite Friends & Earn!\n\nShare your link:\n${link}\n\nEarn bonus ETB for every friend who joins! 🎉`,
+    { reply_markup: MAIN_MENU }
+  );
+}
 
     else if(text === '🎯 Game Patterns'){
       bot.sendMessage(msg.chat.id,
