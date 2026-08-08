@@ -211,8 +211,74 @@ if (process.env.DATABASE_URL) {
       },
 
       async getLeaderboard() {
-        return this.q('SELECT name,total_wins,total_games,total_winnings FROM users ORDER BY total_winnings DESC LIMIT 10');
-      },
+  return this.q('SELECT name,total_wins,total_games,total_winnings FROM users ORDER BY total_winnings DESC LIMIT 10');
+},
+
+// ── Super Bingo Board Reservations ──
+async reserveSuperBoard(tid, cardId) {
+  const r = await this.q(
+    `INSERT INTO super_board_reservations
+       (user_id, card_id, stake_amount, jackpot, status)
+     SELECT id, $2, 50.00, 10000.00, 'locked'
+     FROM users
+     WHERE telegram_id=$1
+     RETURNING *`,
+    [String(tid), cardId]
+  );
+  return r[0] || null;
+},
+
+async getUserSuperBoards(tid) {
+  return this.q(
+    `SELECT sbr.*
+     FROM super_board_reservations sbr
+     JOIN users u ON u.id=sbr.user_id
+     WHERE u.telegram_id=$1
+       AND sbr.status='locked'
+     ORDER BY sbr.card_id`,
+    [String(tid)]
+  );
+},
+
+async getSuperBoardReservation(cardId) {
+  const r = await this.q(
+    `SELECT sbr.*, u.telegram_id
+     FROM super_board_reservations sbr
+     JOIN users u ON u.id=sbr.user_id
+     WHERE sbr.card_id=$1
+       AND sbr.status='locked'
+     LIMIT 1`,
+    [cardId]
+  );
+  return r[0] || null;
+},
+
+async lockSuperBoardForGame(cardId, gameId) {
+  const r = await this.q(
+    `UPDATE super_board_reservations
+     SET status='playing', game_id=$1, played_at=NOW()
+     WHERE card_id=$2
+       AND status='locked'
+     RETURNING *`,
+    [gameId, cardId]
+  );
+  return r[0] || null;
+},
+
+async releaseSuperBoard(tid, cardId) {
+  const r = await this.q(
+    `UPDATE super_board_reservations sbr
+     SET status='released'
+     FROM users u
+     WHERE sbr.user_id=u.id
+       AND u.telegram_id=$1
+       AND sbr.card_id=$2
+       AND sbr.status='locked'
+     RETURNING sbr.*`,
+    [String(tid), cardId]
+  );
+  return r[0] || null;
+},
 
       // ── Settings (key/value store) ──
       async ensureSettingsTable() {
@@ -628,15 +694,37 @@ if(!ep&&msg.telegramId){
           // ── If a game for this stake is already in progress, join as a spectator ──
           const liveRoom=Object.values(rooms).find(r=>r.stakeId===msg.stakeId&&r.status==='playing');
           if(liveRoom){
-            liveRoom.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,hasPaid:false,disqualified:false});
-            client.roomId=liveRoom.roomId;
-            send(ws,{type:'joinedRoom',roomId:liveRoom.roomId,stakeId:liveRoom.stakeId,balance:client.balance,status:liveRoom.status});
-            send(ws,{type:'spectating',pot:prizePoolOf(liveRoom),playerCount:liveRoom.players.filter(p=>p.hasPaid).length,calledNumbers:liveRoom.calledNumbers});
-            broadcastLobby();
-            break;
-          }
+  client.roomId=liveRoom.roomId;
 
-          
+  send(ws,{
+    type:'joinedRoom',
+    roomId:liveRoom.roomId,
+    stakeId:liveRoom.stakeId,
+    balance:client.balance,
+    status:liveRoom.status
+  });
+
+  send(ws,{
+    type:'spectating',
+    pot:prizePoolOf(liveRoom),
+    playerCount:liveRoom.players.filter(p=>p.hasPaid).length,
+    calledNumbers:liveRoom.calledNumbers
+  });
+
+  broadcastLobby();
+  break;
+}
+
+          let reservedSuperBoards=[];
+
+if(sc.type==='super' && db && client.telegramId){
+  try{
+    reservedSuperBoards=await db.getUserSuperBoards(client.telegramId);
+  }catch(e){
+    console.error('Super reservation load error:',e.message);
+  }
+}      
+  
           const room=getOrCreateRoom(msg.stakeId);
           if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'Game already running.'});
           room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
