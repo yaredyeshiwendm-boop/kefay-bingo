@@ -264,8 +264,12 @@ const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claim
 const TOTAL_CARDS      = 400;
 
 const STAKES = [
-  { id:'st10', amount:10, maxPlayers:400 },
-  { id:'st20', amount:20, maxPlayers:400 },
+  { id:'st10', amount:10, maxPlayers:400, type:'normal' },
+  { id:'st20', amount:20, maxPlayers:400, type:'normal' },
+  { id:'st50', amount:50, maxPlayers:400, type:'normal' },
+  { id:'st100', amount:100, maxPlayers:400, type:'normal' },
+
+  { id:'super50', amount:50, maxPlayers:1250, type:'super' },
 ];
 
 // ─── FIXED CARDS ─────────────────────────────────────────────
@@ -314,7 +318,12 @@ function getOrCreateRoom(sid){
   let r=Object.values(rooms).find(r=>r.stakeId===sid&&(r.status==='waiting'||r.status==='countdown'));
   if(r) return r;
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
-  r={roomId,stakeId:sid,stake:s.amount,status:'waiting',players:[],calledNumbers:[],
+  r={
+ roomId,
+ stakeId:sid,
+ stake:s.amount,
+ gameType:s.type || 'normal',
+ status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
      countdownLeft:Math.ceil(LOBBY_WAIT_MS/1000),claimWindowOpen:false,claimedThisRound:[],
      takenCardIds:new Set(),pot:0,dbGameId:null};
@@ -1014,7 +1023,7 @@ function startTelegramBot(){
     keyboard: [
       [{ text: '🎮 Play Now' }, { text: '📝 Register' }],
       [{ text: '💰 Deposit' }, { text: '💸 Withdraw' }],
-      [{ text: '🔀 Transfer' }, { text: '🎁 Invite Friends' }],
+      [{ text: '💰 Balance' }, { text: '🎁 Invite Friends' }],
       [{ text: '🎯 Game Patterns' }, { text: '📖 Instructions' }],
       [{ text: '🆘 24H Support 1' }, { text: '🆘 Support 2' }]
     ],
@@ -1024,10 +1033,39 @@ function startTelegramBot(){
 
  async function showMainMenu(chatId, tid, firstName){
   const user = await loadUser(String(tid));
+
   if(user){
-    bot.sendMessage(chatId,
-      `👋 Hi *${user.name}!*\nWelcome to *Kefay Bingo*, the ultimate bingo gaming experience! 🎉\n\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`,
-      { reply_markup: MAIN_MENU }
+    bot.sendMessage(
+      chatId,
+      `🎱 *Kefay Bingo*
+
+👤 User: *${user.name}*
+💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*
+
+Choose Game 👇`,
+      {
+        parse_mode:'Markdown',
+        reply_markup:{
+          inline_keyboard:[
+            [
+              {
+                text:'🎱 Normal Bingo',
+                web_app:{
+                  url:`${GAME_URL}?tid=${tid}&game=normal`
+                }
+              }
+            ],
+            [
+              {
+                text:'🔥 Super Bingo',
+                web_app:{
+                  url:`${GAME_URL}?tid=${tid}&game=super`
+                }
+              }
+            ]
+          ]
+        }
+      }
     );
   } else {
     pending[tid] = { step:'ask_phone', name: firstName || 'Player' };
@@ -1100,6 +1138,49 @@ function startTelegramBot(){
 });
 bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.first_name));
 
+bot.onText(/🎮 Play Now/, async msg => {
+  const tid = msg.from.id;
+  const user = await loadUser(String(tid));
+
+  if(!user){
+    return bot.sendMessage(
+      msg.chat.id,
+      '⚠️ Please register first by pressing 📝 Register.',
+      { reply_markup: MAIN_MENU }
+    );
+  }
+
+  await bot.sendMessage(
+    msg.chat.id,
+    `🎱 *Choose Bingo Game*
+
+💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`,
+    {
+      parse_mode:'Markdown',
+      reply_markup:{
+        inline_keyboard:[
+          [
+            {
+              text:'🎱 Normal Bingo',
+              web_app:{
+                url:`${GAME_URL}?tid=${tid}&game=normal`
+              }
+            }
+          ],
+          [
+            {
+              text:'🔥 Super Bingo',
+              web_app:{
+                url:`${GAME_URL}?tid=${tid}&game=super`
+              }
+            }
+          ]
+        ]
+      }
+    }
+  );
+});
+
   bot.onText(/\/balance/, async msg => {
     const u = await loadUser(String(msg.from.id));
     bot.sendMessage(msg.chat.id,
@@ -1130,13 +1211,41 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
     const user = await loadUser(String(tid));
 
     if(text === '🎮 Play Now'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first by pressing 📝 Register.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `🎮 Tap below to open the game:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'🎮 Play Kefay Bingo', web_app:{ url:`${GAME_URL}?tid=${tid}` }}]]
-        }
-      });
+  if(!user) {
+    return bot.sendMessage(
+      msg.chat.id,
+      '⚠️ Please register first by pressing 📝 Register.',
+      { reply_markup: MAIN_MENU }
+    );
+  }
+
+  bot.sendMessage(
+    msg.chat.id,
+    `🎮 Choose Bingo Game\n\nSelect the game you want to play:`,
+    {
+      reply_markup:{
+        inline_keyboard:[
+          [
+            {
+              text:'🎱 Normal Bingo',
+              web_app:{
+                url:`${GAME_URL}?tid=${tid}&game=normal`
+              }
+            }
+          ],
+          [
+            {
+              text:'🔥 Super Bingo',
+              web_app:{
+                url:`${GAME_URL}?tid=${tid}&game=super`
+              }
+            }
+          ]
+        ]
+      }
     }
+  );
+}
 
     else if(text === '📝 Register'){
       if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { reply_markup: MAIN_MENU });

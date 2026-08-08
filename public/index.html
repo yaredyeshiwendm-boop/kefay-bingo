@@ -715,6 +715,7 @@ let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
+const gameMode = new URLSearchParams(location.search).get('game') || 'normal';
 let cardPool=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -1438,11 +1439,42 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
-  const grid=document.getElementById('stakesGrid'); grid.innerHTML='';
-  arr.forEach(s=>{
-    const d=document.createElement('div'); d.className='stake-card';
-    d.innerHTML=`<div class="stake-etb">${s.amount} ETB</div><div class="stake-info">${s.playerCount} players • ${s.status}${s.status==='countdown'?' ('+s.countdown+'s)':''}</div>`;
-    d.onclick=()=>wsSend({type:'joinRoom',stakeId:s.stakeId});
+  const grid=document.getElementById('stakesGrid');
+  console.log("🔥 STAKES FROM SERVER:", arr);
+  grid.innerHTML='';
+
+  let stakes = [];
+
+  if(gameMode === 'super'){
+    stakes = arr.filter(s => s.stakeId === 'super50');
+  } else {
+    stakes = arr.filter(s =>
+      s.stakeId === 'st10' ||
+      s.stakeId === 'st20' ||
+      s.stakeId === 'st50' ||
+      s.stakeId === 'st100'
+    );
+  }
+
+  stakes.forEach(s=>{
+    const d=document.createElement('div');
+    d.className='stake-card';
+
+    d.innerHTML=`
+      <div class="stake-etb">${s.amount} ETB</div>
+      <div class="stake-info">
+        ${s.playerCount} players • ${s.status}
+        ${s.status==='countdown' ? ' ('+s.countdown+'s)' : ''}
+      </div>
+    `;
+
+    d.onclick=()=>{
+      wsSend({
+        type:'joinRoom',
+        stakeId:s.stakeId
+      });
+    };
+
     grid.appendChild(d);
   });
 }
