@@ -12,7 +12,30 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-module.exports = {
+module.exports = {   async q(text, params = []) {
+    const { rows } = await pool.query(text, params);
+    return rows;
+  },
+
+  async getUser(telegramId) {
+    const { rows } = await pool.query(
+      'SELECT * FROM users WHERE telegram_id=$1',
+      [telegramId]
+    );
+    return rows[0] || null;
+  },
+
+  async createUser(telegramId, name, phone) {
+    const { rows } = await pool.query(
+      `INSERT INTO users(telegram_id, name, phone)
+       VALUES($1, $2, $3)
+       ON CONFLICT(telegram_id)
+       DO UPDATE SET last_seen=NOW(), name=$2
+       RETURNING *`,
+      [telegramId, name, phone]
+    );
+    return rows[0];
+  },
   // ── User operations ──
   async registerUser(telegramId, name, phone) {
     const { rows } = await pool.query(

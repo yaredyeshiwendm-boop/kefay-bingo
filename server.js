@@ -49,7 +49,7 @@ if (process.env.DATABASE_URL) {
       ssl: { rejectUnauthorized: false },
       max: 20,                      // cap concurrent DB connections
       idleTimeoutMillis: 30000,     // close idle connections after 30s
-      connectionTimeoutMillis: 5000 // fail fast instead of hanging under load
+      connectionTimeoutMillis: 15000 // fail fast instead of hanging under load
     });
 
     db = {
@@ -132,7 +132,7 @@ if (process.env.DATABASE_URL) {
       },
       async approveDeposit(id) {
         const r = await this.q(
-          `UPDATE deposit_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
+          `UPDATE deposit_requests SET status='approved',approved_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
         );
         if (!r[0]) return null;
         const dep = r[0];
@@ -147,7 +147,7 @@ if (process.env.DATABASE_URL) {
         return null;
       },
       async rejectDeposit(id) {
-        await this.q(`UPDATE deposit_requests SET status='rejected',handled_at=NOW() WHERE id=$1`, [id]);
+        await this.q(`UPDATE deposit_requests SET status='rejected',approved_at=NOW() WHERE id=$1`, [id]);
       },
 
       // ── Withdrawals ──

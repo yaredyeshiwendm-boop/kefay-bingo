@@ -753,6 +753,15 @@ function connect(){
   ws=new WebSocket(proto+location.host);
   ws.onopen=()=>{
   document.getElementById('connDot').classList.add('on');
+
+  telegramId=getTelegramId();
+
+  if(telegramId){
+    wsSend({
+      type:'telegramAuth',
+      telegramId:parseInt(telegramId)
+    });
+  }
 };
   ws.onclose=()=>{document.getElementById('connDot').classList.remove('on');setTimeout(connect,3000);};
   ws.onerror=()=>{};

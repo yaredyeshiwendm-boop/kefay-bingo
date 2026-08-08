@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Kefay Bingo Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{
+  font-family: Arial;
+  padding:20px;
+  background:#111;
+  color:white;
+}
+button{
+  padding:10px;
+  margin:5px;
+  border:0;
+  border-radius:8px;
+  cursor:pointer;
+}
+.approve{background:#16a34a;color:white}
+.reject{background:#dc2626;color:white}
+.card{
+  background:#222;
+  padding:15px;
+  margin:10px 0;
+  border-radius:12px;
+}
+input{
+  padding:10px;
+  width:90%;
+  border-radius:8px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🎱 Kefay Bingo Admin</h2>
+
+<input id="token" placeholder="Admin Token">
+<button onclick="loadDeposits()">Login</button>
+
+<h3>💰 Pending Deposits</h3>
+
+<div id="list"></div>
+
+
+<script>
+
+let token="";
+
+async function loadDeposits(){
+
+ token=document.getElementById("token").value;
+
+ const res=await fetch(
+ "/api/admin/deposits?status=pending",
+ {
+  headers:{
+   "x-admin-token":token
+  }
+ }
+ );
+
+ if(!res.ok){
+  alert("Wrong Admin Token");
+  return;
+ }
+
+ const data=await res.json();
+
+ let html="";
+
+ data.forEach(d=>{
+
+ html+=`
+ <div class="card">
+
+ 👤 User: ${d.name || d.telegram_id}<br>
+ 💰 Amount: ${d.amount} ETB<br>
+ 🧾 TX: ${d.tx_ref}<br>
+ 📅 ${d.created_at}
+
+ <br>
+
+ <button class="approve"
+ onclick="approve(${d.id})">
+ ✅ Approve
+ </button>
+
+ <button class="reject"
+ onclick="rejectDeposit(${d.id})">
+ ❌ Reject
+ </button>
+
+ </div>
+ `;
+
+ });
+
+ document.getElementById("list").innerHTML =
+ html || "No pending deposits";
+
+}
+
+
+async function approve(id){
+
+ await fetch(
+ `/api/admin/deposits/${id}/approve`,
+ {
+  method:"POST",
+  headers:{
+   "x-admin-token":token
+  }
+ }
+ );
+
+ loadDeposits();
+
+}
+
+
+async function rejectDeposit(id){
+
+ await fetch(
+ `/api/admin/deposits/${id}/reject`,
+ {
+  method:"POST",
+  headers:{
+   "x-admin-token":token
+  }
+ }
+ );
+
+ loadDeposits();
+
+}
+
+</script>
+
+</body>
+</html>
