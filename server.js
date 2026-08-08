@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 app.use(express.json());
 
-const ADMIN_PHONE = '251934255415';
+const ADMIN_PHONE = '0993043478';
 function isAdminPhone(phone) {
   if (!phone) return false;
   const normalized = String(phone).replace(/^\+/, '');
@@ -64,13 +64,25 @@ if (process.env.DATABASE_URL) {
         return r[0] || null;
       },
       async createUser(tid, name, phone) {
-        const r = await this.q(
-          `INSERT INTO users(telegram_id,name,phone,balance) VALUES($1,$2,$3,10)
-           ON CONFLICT(telegram_id) DO UPDATE SET last_seen=NOW() RETURNING *`,
-          [String(tid), name, phone]
-        );
-        return r[0];
-      },
+  const referralCode = 'KF' + String(tid).slice(-8);
+
+  const r = await this.q(
+    `INSERT INTO users(
+       telegram_id,
+       name,
+       phone,
+       balance,
+       referral_code
+     )
+     VALUES($1,$2,$3,10,$4)
+     ON CONFLICT(telegram_id)
+     DO UPDATE SET last_seen=NOW(), name=$2
+     RETURNING *`,
+    [String(tid), name, phone, referralCode]
+  );
+
+  return r[0];
+},
       async setBalance(tid, bal) {
         await this.q('UPDATE users SET balance=$1 WHERE telegram_id=$2', [bal, String(tid)]);
       },
@@ -1030,29 +1042,55 @@ function startTelegramBot(){
     const tid = msg.from.id;
     const refCode = match && match[1];
 
-    if (refCode && refCode.startsWith('ref_')) {
-      const referrerId = refCode.substring(4);
+    if (refCode && refCode.startsWith('ref_') && db) {
+  const referralCode = refCode.substring(4);
 
-      if (referrerId !== String(tid) && db) {
-        try {
-          const existing = await db.getUser(String(tid));
+  try {
+    const referrer = await db.q(
+      `SELECT id, telegram_id
+       FROM users
+       WHERE referral_code=$1`,
+      [referralCode]
+    );
 
-          if (existing && !existing.referrer_id) {
-            await db.q(
-              `UPDATE users
-               SET referrer_id=$1
-               WHERE telegram_id=$2
-               AND referrer_id IS NULL`,
-              [String(referrerId), String(tid)]
-            );
+    if (referrer.length > 0) {
+      const referrerUser = referrer[0];
 
-            console.log(`🔗 Referral saved: ${tid} came from ${referrerId}`);
-          }
-        } catch (e) {
-          console.error('Referral save error:', e.message);
+      if (String(referrerUser.telegram_id) !== String(tid)) {
+        const existing = await db.getUser(String(tid));
+
+        if (existing && !existing.referrer_id) {
+
+          await db.q(
+            `UPDATE users
+             SET referrer_id=$1
+             WHERE telegram_id=$2
+             AND referrer_id IS NULL`,
+            [referrerUser.id, String(tid)]
+          );
+
+          // 🎁 Give referrer 10 ETB immediately
+          await db.q(
+            `UPDATE users
+             SET balance = balance + 10,
+                 referral_bonus = referral_bonus + 10,
+                 referral_count = referral_count + 1
+             WHERE id=$1`,
+            [referrerUser.id]
+          );
+
+          console.log(
+            `🎁 Referral bonus: ${referrerUser.telegram_id} earned 10 ETB from ${tid}`
+          );
         }
       }
+    } else {
+      console.log(`⚠️ Referral code not found: ${referralCode}`);
     }
+  } catch (e) {
+    console.error('Referral save error:', e.message);
+  }
+}
 
     await showMainMenu(
       msg.chat.id,
@@ -1066,7 +1104,7 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
     const u = await loadUser(String(msg.from.id));
     bot.sendMessage(msg.chat.id,
       u ? `💰 Balance: *${parseFloat(u.balance).toFixed(2)} ETB*` : 'Use /start to register.',
-      { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU }
     );
   });
 
@@ -1101,7 +1139,7 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
     }
 
     else if(text === '📝 Register'){
-      if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { parse_mode:'Markdown', reply_markup: MAIN_MENU });
+      if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { reply_markup: MAIN_MENU });
       pending[tid] = { step:'ask_name' };
       bot.sendMessage(msg.chat.id, '📝 Let\'s get you registered!\n\nWhat should we call you?', { reply_markup: MAIN_MENU });
     }
@@ -1127,46 +1165,61 @@ bot.onText(/\/play/,  msg => showMainMenu(msg.chat.id, msg.from.id, msg.from.fir
     else if(text === '🔀 Transfer'){
       bot.sendMessage(msg.chat.id,
         `🔀 *Transfer*\n\nPlayer-to-player transfer is coming soon! Stay tuned 🚀`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU }
       );
     }
 
-    else if(text === '🎁 Invite Friends'){
+   else if(text === '🎁 Invite Friends'){
   const me = await bot.getMe();
-  const link = `https://t.me/${me.username}?start=ref_${tid}`;
+  const user = await loadUser(String(tid));
+
+  if(!user){
+    return bot.sendMessage(
+      msg.chat.id,
+      '⚠️ Please register first.',
+      { reply_markup: MAIN_MENU }
+    );
+  }
+
+  const referralCode =
+    user.referral_code || ('KF' + String(tid).slice(-8));
+
+  const link =
+    `https://t.me/${me.username}?start=ref_${referralCode}`;
 
   bot.sendMessage(
     msg.chat.id,
-    `🎁 Invite Friends & Earn!\n\nShare your link:\n${link}\n\nEarn bonus ETB for every friend who joins! 🎉`,
+    `🎁 Invite Friends & Earn!\n\n🔗 Your referral link:\n${link}\n\n👥 Invite your friends and earn bonus ETB! 🎉`,
     { reply_markup: MAIN_MENU }
   );
-}
+} 
+
 
     else if(text === '🎯 Game Patterns'){
       bot.sendMessage(msg.chat.id,
         `🎯 *Winning Patterns*\n\n✅ Any complete *row* (horizontal)\n✅ Any complete *column* (vertical)\n✅ Either *diagonal*\n✅ *4 corners*\n\nThe FREE space in the center counts automatically!\n\nPress BINGO as soon as you complete a pattern! 🎉`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU }
       );
     }
 
     else if(text === '📖 Instructions'){
       bot.sendMessage(msg.chat.id,
         `📖 *How to Play Kefay Bingo*\n\n1️⃣ Deposit ETB into your wallet\n2️⃣ Choose a stake tier (10–100 ETB)\n3️⃣ Pick your lucky card (1–400)\n4️⃣ Numbers are called every 5 seconds\n5️⃣ Mark numbers on your card\n6️⃣ Complete a pattern and press *BINGO!* 🎉\n\n🏆 Winner gets *80%* of the total pot\n🏠 House takes *20%*\n⚠️ False BINGO = disqualification!`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU }
       );
     }
 
     else if(text === '🆘 24H Support 1'){
       bot.sendMessage(msg.chat.id,
-        `🆘 *24H Support*\n\nContact us anytime:\n👤 @YourSupportUsername1\n\nWe typically respond within a few minutes.`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+        `🆘 *24H Support*\n\nContact us anytime:\n👤 @Kefay_support\n\nWe typically respond within a few minutes.`,
+        { reply_markup: MAIN_MENU }
       );
     }
 
     else if(text === '🆘 Support 2'){
       bot.sendMessage(msg.chat.id,
-        `🆘 *Support 2*\n\nAlternate support contact:\n👤 @YourSupportUsername2`,
-        { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+        `🆘 *Support 2*\n\nAlternate support contact:\n👤 @Kefay_supoort2`,
+        { reply_markup: MAIN_MENU }
       );
     }
   });
@@ -1189,7 +1242,7 @@ bot.on('contact', async msg => {
     }
     bot.sendMessage(msg.chat.id,
       `✅ *Registered Successfully!*\n\n👤 Name: *${name}*\n📱 Phone: ${phone}\n💰 Balance: *${balance} ETB*\n\nDeposit ETB to start playing! 🎱`,
-      { parse_mode:'Markdown', reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU }
     );
   });
 
