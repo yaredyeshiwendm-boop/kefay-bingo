@@ -899,7 +899,11 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'cardPoolUpdate':
-      cardPool=msg.pool; renderCardPool(msg.pool);
+      cardPool=msg.pool;
+      if(Array.isArray(msg.reservedSuperBoards)){
+        reservedSuperBoards=msg.reservedSuperBoards.map(Number);
+      }
+      renderCardPool(msg.pool);
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       break;
 
