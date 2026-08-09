@@ -165,10 +165,13 @@ module.exports = {   async q(text, params = []) {
       `INSERT INTO super_board_reservations
         (user_id, card_id, stake_amount, jackpot, status)
        VALUES ($1, $2, 50.00, 10000.00, 'locked')
+       ON CONFLICT (card_id, status)
+       DO NOTHING
        RETURNING *`,
       [userId, cardId]
     );
-    return rows[0];
+
+    return rows[0] || null;
   },
 
   async getUserSuperBoards(userId) {
