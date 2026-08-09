@@ -278,7 +278,24 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <div style="font-size:12px;color:var(--gray)" id="welcomeStatus">Ready to play</div>
   </div>
   <h2 class="screen-title">SELECT STAKE TIER</h2>
-  <div id="stakesGrid" class="stakes-grid"></div>
+  <div id="stakesGrid" class="stakes-grid">
+  <div class="stake-card" onclick="wsSend({type:'joinRoom',stakeId:'st10'})">
+    <div class="stake-etb">10 ETB</div>
+    <div class="stake-info">0 players • waiting</div>
+  </div>
+  <div class="stake-card" onclick="wsSend({type:'joinRoom',stakeId:'st20'})">
+    <div class="stake-etb">20 ETB</div>
+    <div class="stake-info">0 players • waiting</div>
+  </div>
+  <div class="stake-card" onclick="wsSend({type:'joinRoom',stakeId:'st50'})">
+    <div class="stake-etb">50 ETB</div>
+    <div class="stake-info">0 players • waiting</div>
+  </div>
+  <div class="stake-card" onclick="wsSend({type:'joinRoom',stakeId:'st100'})">
+    <div class="stake-etb">100 ETB</div>
+    <div class="stake-info">0 players • waiting</div>
+  </div>
+</div>
 </div>
 
 <div id="screenCards" class="screen">
@@ -862,10 +879,11 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   } else {
     goScreen('screenLobby');
   }
-        myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null; reservedSuperBoards=msg.reservedSuperBoards||[]; console.log("🔥 JOINED RESERVED:", msg.reservedSuperBoards, "CLIENT:", reservedSuperBoards);
+    break;
 
-        console.log("🔥 RESERVED SUPER BOARDS:", reservedSuperBoards);
-    case 'lobbyUpdate': renderStakes(msg.stakes); break;
+    case 'lobbyUpdate':
+      renderStakes(msg.stakes);
+      break;
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
@@ -1536,31 +1554,56 @@ document.getElementById('cardSearch').addEventListener('input',()=>{
 // ─── STAKES ───────────────────────────────────────────────────
 function renderStakes(arr){
   const grid=document.getElementById('stakesGrid');
-  console.log("🔥 STAKES FROM SERVER:", arr);
+  if(!grid) return;
+
+  const fallback=[
+    {stakeId:'st10',amount:10,maxPlayers:400,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st20',amount:20,maxPlayers:400,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st50',amount:50,maxPlayers:400,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st100',amount:100,maxPlayers:400,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'super50',amount:50,maxPlayers:1250,playerCount:0,status:'waiting',countdown:0}
+  ];
+
+  const source=Array.isArray(arr)&&arr.length ? arr : fallback;
+
   grid.innerHTML='';
 
-  let stakes = [];
+  let stakes;
 
-  if(gameMode === 'super'){
-    stakes = arr.filter(s => s.stakeId === 'super50');
-  } else {
-    stakes = arr.filter(s =>
-      s.stakeId === 'st10' ||
-      s.stakeId === 'st20' ||
-      s.stakeId === 'st50' ||
-      s.stakeId === 'st100'
+  if(gameMode==='super'){
+    stakes=source.filter(s=>s.stakeId==='super50');
+    if(!stakes.length) stakes=fallback.filter(s=>s.stakeId==='super50');
+  }else{
+    stakes=source.filter(s=>
+      s.stakeId==='st10' ||
+      s.stakeId==='st20' ||
+      s.stakeId==='st50' ||
+      s.stakeId==='st100'
     );
+
+    if(!stakes.length){
+      stakes=fallback.filter(s=>
+        s.stakeId==='st10' ||
+        s.stakeId==='st20' ||
+        s.stakeId==='st50' ||
+        s.stakeId==='st100'
+      );
+    }
   }
 
   stakes.forEach(s=>{
     const d=document.createElement('div');
     d.className='stake-card';
 
+    const statusText=s.status==='countdown'
+      ? `Starting in ${s.countdown||0}s`
+      : `${s.playerCount||0} players • ${s.status||'waiting'}`;
+
     d.innerHTML=`
       <div class="stake-etb">${s.amount} ETB</div>
-      <div class="stake-info">
-        ${s.playerCount} players • ${s.status}
-        ${s.status==='countdown' ? ' ('+s.countdown+'s)' : ''}
+      <div class="stake-info">${statusText}</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gold);font-weight:700">
+        SELECT STAKE
       </div>
     `;
 
@@ -1575,7 +1618,18 @@ function renderStakes(arr){
   });
 }
 
-// ─── TRACKER ─────────────────────────────────────────────────
+
+// Force stake cards to appear when the lobby loads.
+// Server updates will replace these with live player counts.
+window.addEventListener('load',()=>{
+  renderStakes([
+    {stakeId:'st10',amount:10,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st20',amount:20,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st50',amount:50,playerCount:0,status:'waiting',countdown:0},
+    {stakeId:'st100',amount:100,playerCount:0,status:'waiting',countdown:0}
+  ]);
+});
+
 function buildTracker(){
   const grid=document.getElementById('trackerGrid'); grid.innerHTML='';
   for(let i=1;i<=75;i++){
