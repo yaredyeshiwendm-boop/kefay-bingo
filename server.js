@@ -714,37 +714,74 @@ wss.on('connection',(ws)=>{
           break;
         }
       case 'reconnect':{
-  const room=rooms[msg.roomId];
-  if(!room||room.status!=='playing'){
-    send(ws,{type:'reconnectFailed'}); break;
-  }
-  // Try by playerId first, fall back to telegramId for page-reload reconnects
-  let ep=room.players.find(p=>p.playerId===client.playerId);
-if(!ep&&msg.telegramId){
-  const tid=String(msg.telegramId);
-  ep=room.players.find(p=>String(p.telegramId)===tid);
-    if(ep){
-      // Re-link this new ws/client to the existing player slot
-      const oldClient=Object.values(clients).find(c=>c.telegramId===tid&&c.playerId!==client.playerId);
-      if(oldClient) delete clients[oldClient.playerId];
-      ep.playerId=client.playerId;
-      client.telegramId=String(msg.telegramId);
-    }
-  }
-  if(ep){
-    ep.ws=ws; client.roomId=msg.roomId;
-    const card=ep.cardId?getCard(ep.cardId):null;
-    const card2=ep.cardId2?getCard(ep.cardId2):null;
-    send(ws,{type:'reconnected',roomId:msg.roomId,stakeId:room.stakeId,
-      cardId:ep.cardId,cardNumbers:card?card.numbers:[],
-      cardId2:ep.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-      calledNumbers:room.calledNumbers,pot:room.pot,playerCount:room.players.length});
-  } else {
-    send(ws,{type:'reconnectFailed'});
-  }
-  break;
-}
-       case 'joinRoom':{
+        const room=rooms[msg.roomId];
+
+        if(!room||!['waiting','countdown','playing'].includes(room.status)){
+          send(ws,{type:'reconnectFailed'});
+          break;
+        }
+
+        // Try by playerId first, fall back to telegramId for page-reload reconnects
+        let ep=room.players.find(p=>p.playerId===client.playerId);
+
+        if(!ep&&msg.telegramId){
+          const tid=String(msg.telegramId);
+          ep=room.players.find(p=>String(p.telegramId)===tid);
+
+          if(ep){
+            // Re-link this new ws/client to the existing player slot
+            const oldClient=Object.values(clients).find(
+              c=>c.telegramId===tid&&c.playerId!==client.playerId
+            );
+
+            if(oldClient) delete clients[oldClient.playerId];
+
+            ep.playerId=client.playerId;
+            client.telegramId=tid;
+          }
+        }
+
+        if(ep){
+          ep.ws=ws;
+          client.roomId=msg.roomId;
+
+          const card=ep.cardId?getCard(ep.cardId):null;
+          const card2=ep.cardId2?getCard(ep.cardId2):null;
+
+          send(ws,{
+            type:'reconnected',
+            roomId:msg.roomId,
+            stakeId:room.stakeId,
+            cardId:ep.cardId,
+            cardNumbers:card?card.numbers:[],
+            cardId2:ep.cardId2||null,
+            cardNumbers2:card2?card2.numbers:[],
+            calledNumbers:room.calledNumbers,
+            pot:room.pot,
+            playerCount:room.players.length
+          });
+
+          send(ws,{
+            type:'cardPoolUpdate',
+            pool:getRoomCardPool(room).map(c=>({
+              id:c.id,
+              taken:room.takenCardIds.has(c.id),
+              takenByMe:ep.cardId===c.id||ep.cardId2===c.id
+            })),
+            playerCount:room.players.reduce(
+              (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+            ),
+            stakeAmount:room.stake,
+            gameType:room.gameType,
+            totalCards:getRoomCardPool(room).length
+          });
+        }else{
+          send(ws,{type:'reconnectFailed'});
+        }
+
+        break;
+      }
+      case 'joinRoom':{
               const sc=STAKES.find(s=>s.id===msg.stakeId);
              if(!sc) return send(ws,{type:'error',message:'Invalid stake.'});
              leaveRoom(client);
