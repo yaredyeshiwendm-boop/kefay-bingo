@@ -327,7 +327,8 @@ const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
-const TOTAL_CARDS      = 400;
+const NORMAL_TOTAL_CARDS = 400;
+const SUPER_TOTAL_CARDS  = 1250;
 
 const STAKES = [
   { id:'st10', amount:10, maxPlayers:400, type:'normal' },
@@ -353,9 +354,27 @@ function generateFixedCard(idx) {
   }
   return nums;
 }
-const CARD_POOL=[];
-for(let i=1;i<=TOTAL_CARDS;i++) CARD_POOL.push({id:i,numbers:generateFixedCard(i)});
-const getCard=id=>CARD_POOL.find(c=>c.id===id);
+const NORMAL_CARD_POOL = [];
+const SUPER_CARD_POOL = [];
+
+for(let i=1;i<=NORMAL_TOTAL_CARDS;i++){
+  NORMAL_CARD_POOL.push({
+    id:i,
+    numbers:generateFixedCard(i)
+  });
+}
+
+for(let i=1;i<=SUPER_TOTAL_CARDS;i++){
+  SUPER_CARD_POOL.push({
+    id:i,
+    numbers:generateFixedCard(i + 100000)
+  });
+}
+
+const getCard = (id, type='normal') => {
+  const pool = type === 'super' ? SUPER_CARD_POOL : NORMAL_CARD_POOL;
+  return pool.find(c=>c.id===id);
+};
 
 // ─── WIN CHECK ───────────────────────────────────────────────
 function checkWin(nums, called, marked) {
@@ -411,23 +430,62 @@ function broadcastLobby(){
     Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
 }
+function getRoomCardPool(room){
+  return room.gameType === 'super'
+    ? SUPER_CARD_POOL
+    : NORMAL_CARD_POOL;
+}
+
 function broadcastCardPool(room){
-  // Send only the FULL pool once when needed (e.g. on join); for live picks use broadcastCardDiff instead.
-  const base=CARD_POOL.map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
-  const cardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0);
-  room.players.forEach(p=>send(p.ws,{type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:p.cardId===c.id||p.cardId2===c.id})),playerCount:cardCount,stakeAmount:room.stake}));
+  const pool = getRoomCardPool(room);
+
+  const base = pool.map(c => ({
+    id: c.id,
+    taken: room.takenCardIds.has(c.id)
+  }));
+
+  const cardCount = room.players.reduce(
+    (sum,p) => sum + (p.cardId ? 1 : 0) + (p.cardId2 ? 1 : 0),
+    0
+  );
+
+  room.players.forEach(p => send(p.ws,{
+    type:'cardPoolUpdate',
+    pool:base.map(c => ({
+      ...c,
+      takenByMe:p.cardId===c.id || p.cardId2===c.id
+    })),
+    playerCount:cardCount,
+    stakeAmount:room.stake,
+    gameType:room.gameType,
+    totalCards:pool.length
+  }));
 }
 // Lightweight update: tell everyone in the room only WHICH card(s) changed state,
 // instead of re-sending the entire 400-card array on every single pick.
 // This is the #1 fix for handling 400 concurrent players smoothly.
 function broadcastCardDiff(room, changedCardIds){
-  const cardCount=room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0);
-  const changes=changedCardIds.map(id=>({id,taken:room.takenCardIds.has(id)}));
+  const cardCount=room.players.reduce(
+    (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+  );
+
+  const changes=changedCardIds.map(id=>({
+    id,
+    taken:room.takenCardIds.has(id)
+  }));
+
   room.players.forEach(p=>send(p.ws,{
     type:'cardPoolDiff',
-    changes:changes.map(c=>({...c,takenByMe:p.cardId===c.id||p.cardId2===c.id})),
+    changes:changes.map(c=>({
+      ...c,
+      takenByMe:p.cardId===c.id||p.cardId2===c.id
+    })),
     playerCount:cardCount,
-    stakeAmount:room.stake
+    stakeAmount:room.stake,
+    gameType:room.gameType,
+    totalCards:room.gameType==='super'
+      ? SUPER_TOTAL_CARDS
+      : NORMAL_TOTAL_CARDS
   }));
 }
 
@@ -741,7 +799,7 @@ if(sc.type==='super' && db && client.telegramId){
           if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
           const cardId=parseInt(msg.cardId);
           const slot=msg.slot===2?2:1;
-          if(cardId<1||cardId>TOTAL_CARDS) break;
+          const maxCards=room.gameType==='super'?SUPER_TOTAL_CARDS:NORMAL_TOTAL_CARDS; if(cardId<1||cardId>maxCards) break;
           if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
           const p=room.players.find(p=>p.playerId===client.playerId);
           if(!p) break;

@@ -148,3 +148,27 @@ BEGIN
   RETURN v_new_balance;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ─── SUPER BINGO BOARD RESERVATIONS ────────────────────────────
+CREATE TABLE IF NOT EXISTS super_board_reservations (
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  card_id         INT NOT NULL,
+  stake_amount    NUMERIC(10,2) NOT NULL DEFAULT 50.00,
+  jackpot         NUMERIC(10,2) NOT NULL DEFAULT 10000.00,
+  status          VARCHAR(20) NOT NULL DEFAULT 'locked',
+  game_id         INT REFERENCES games(id) ON DELETE SET NULL,
+  purchased_at    TIMESTAMPTZ DEFAULT NOW(),
+  played_at       TIMESTAMPTZ,
+  UNIQUE(card_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_super_board_user
+  ON super_board_reservations(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_super_board_status
+  ON super_board_reservations(status);
+
+CREATE INDEX IF NOT EXISTS idx_super_board_game
+  ON super_board_reservations(game_id);
+

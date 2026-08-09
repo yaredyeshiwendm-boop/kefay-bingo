@@ -148,6 +148,7 @@ module.exports = {   async q(text, params = []) {
     return rows[0] || null;
   },
 
+
   // ── Leaderboard ──
   async getLeaderboard(limit = 10) {
     const { rows } = await pool.query(
@@ -155,5 +156,68 @@ module.exports = {   async q(text, params = []) {
       [limit]
     );
     return rows;
+  },
+
+  // ── Super Bingo Board Reservations ──
+
+  async reserveSuperBoard(userId, cardId) {
+    const { rows } = await pool.query(
+      `INSERT INTO super_board_reservations
+        (user_id, card_id, stake_amount, jackpot, status)
+       VALUES ($1, $2, 50.00, 10000.00, 'locked')
+       RETURNING *`,
+      [userId, cardId]
+    );
+    return rows[0];
+  },
+
+  async getUserSuperBoards(userId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM super_board_reservations
+       WHERE user_id=$1
+       AND status='locked'
+       ORDER BY card_id`,
+      [userId]
+    );
+    return rows;
+  },
+
+  async getSuperBoardReservation(cardId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM super_board_reservations
+       WHERE card_id=$1
+       AND status='locked'
+       LIMIT 1`,
+      [cardId]
+    );
+    return rows[0] || null;
+  },
+
+  async releaseSuperBoard(userId, cardId) {
+    const { rows } = await pool.query(
+      `UPDATE super_board_reservations
+       SET status='released'
+       WHERE user_id=$1
+       AND card_id=$2
+       AND status='locked'
+       RETURNING *`,
+      [userId, cardId]
+    );
+    return rows[0] || null;
+  },
+
+  async lockSuperBoardForGame(cardId, gameId) {
+    const { rows } = await pool.query(
+      `UPDATE super_board_reservations
+       SET status='playing', game_id=$1
+       WHERE card_id=$2
+       AND status='locked'
+       RETURNING *`,
+      [gameId, cardId]
+    );
+    return rows[0] || null;
   }
+
 };
