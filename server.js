@@ -323,8 +323,8 @@ async releaseSuperBoard(tid, cardId) {
 }
 
 // ─── CONFIG ──────────────────────────────────────────────────
-const LOBBY_WAIT_MS    = 30000;
-const CALL_INTERVAL_MS = 5000;
+const LOBBY_WAIT_MS    = 50000;
+const CALL_INTERVAL_MS = 3000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
 const NORMAL_TOTAL_CARDS = 400;
@@ -339,6 +339,20 @@ const STAKES = [
   { id:'super50', amount:50, maxPlayers:1250, type:'super' },
 ];
 
+// ─── SUPER BINGO SCHEDULE ───────────────────────────────────
+const SUPER_DAY = [5, 6, 0]; // Friday, Saturday, Sunday
+const SUPER_HOUR = 10;
+const SUPER_MINUTE = 0;
+
+function isSuperBingoTime(){
+  const now = new Date();
+
+  return (
+    SUPER_DAY.includes(now.getDay()) &&
+    now.getHours() === SUPER_HOUR &&
+    now.getMinutes() === SUPER_MINUTE
+  );
+}
 // ─── FIXED CARDS ─────────────────────────────────────────────
 function seededRandom(seed) {
   let s = seed;
@@ -491,13 +505,53 @@ function broadcastCardDiff(room, changedCardIds){
 
 // ─── GAME LIFECYCLE ──────────────────────────────────────────
 function startCountdown(room){
-  room.status='countdown'; room.countdownLeft=Math.ceil(LOBBY_WAIT_MS/1000);
+  if(room.gameType==='super') return;
+
+  // IMPORTANT: never create a second countdown for the same room
+  if(room.status==='countdown' && room.countdownTimer) return;
+
+  room.status='countdown';
+  room.countdownLeft=Math.ceil(LOBBY_WAIT_MS/1000);
+
+  // Send the initial value immediately to EVERY player
+  broadcast(room,{
+    type:'countdown',
+    seconds:room.countdownLeft
+  });
+
   room.countdownTimer=setInterval(()=>{
+    if(room.status!=='countdown'){
+      clearInterval(room.countdownTimer);
+      room.countdownTimer=null;
+      return;
+    }
+
+    const ready=room.players.filter(
+      p=>p.cardId || p.cardId2
+    ).length;
+
+    if(ready<2){
+      clearInterval(room.countdownTimer);
+      room.countdownTimer=null;
+      room.status='waiting';
+
+      broadcast(room,{type:'waitingForPlayers'});
+      broadcastLobby();
+      return;
+    }
+
     room.countdownLeft--;
-    const ready=room.players.filter(p=>p.cardId).length;
-    if(ready<2){clearInterval(room.countdownTimer);room.status='waiting';broadcast(room,{type:'waitingForPlayers'});broadcastLobby();return;}
-    broadcast(room,{type:'countdown',seconds:room.countdownLeft});
-    if(room.countdownLeft<=0){clearInterval(room.countdownTimer);startGame(room);}
+
+    broadcast(room,{
+      type:'countdown',
+      seconds:Math.max(0,room.countdownLeft)
+    });
+
+    if(room.countdownLeft<=0){
+      clearInterval(room.countdownTimer);
+      room.countdownTimer=null;
+      startGame(room);
+    }
   },1000);
 }
 
@@ -524,9 +578,16 @@ async function startGame(room){
   }
   room.status='playing';
   // Count paid cards (each card = one stake)
-  const paidCards=room.players.reduce((s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),0);
-  const grossPot=paidCards*room.stake;                          // total stakes collected (gross)
-  room.pot=Math.floor(grossPot*(1-HOUSE_CUT));                  // 80% prize pool shown to players
+   const paidCards=room.players.reduce(
+  (s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),
+  0
+);
+
+const grossPot=paidCards*room.stake;
+
+room.pot = room.gameType==='super'
+  ? 10000
+  : Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
   if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){}}
@@ -538,7 +599,11 @@ async function startGame(room){
       send(p.ws,{type:'yourCard',
         cardId:p.cardId,cardNumbers:card?card.numbers:[],
         cardId2:p.cardId2||null,cardNumbers2:card2?card2.numbers:[],
-        pot:room.pot,playerCount:room.players.length,spectator:false});
+        pot:room.pot,
+playerCount:room.players.reduce(
+  (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+),
+spectator:false});
     } else {
       send(p.ws,{type:'spectating',pot:room.pot,playerCount:room.players.filter(p=>p.hasPaid).length,calledNumbers:room.calledNumbers});
     }
@@ -547,6 +612,31 @@ async function startGame(room){
   broadcast(room,{type:'gameStart',pot:room.pot,players:room.players.map(p=>({playerId:p.playerId,playerName:p.playerName}))});
   broadcastLobby(); scheduleNextCall(room);
 }
+function checkSuperSchedule(){
+  if(!isSuperBingoTime()) return;
+
+  const superRoom = Object.values(rooms).find(
+    r => r.gameType === 'super' &&
+         r.status === 'waiting'
+  );
+
+  if(!superRoom) return;
+
+  const readyPlayers = superRoom.players.filter(
+    p => p.cardId || p.cardId2
+  );
+
+  if(readyPlayers.length === 0) return;
+
+  console.log('🔥 SUPER BINGO scheduled start');
+
+  startGame(superRoom);
+}
+
+// ─── SUPER BINGO AUTO SCHEDULER ─────────────────────────────
+setInterval(() => {
+  checkSuperSchedule();
+}, 1000);
 
 function scheduleNextCall(room){room.callTimer=setTimeout(()=>callNumber(room),CALL_INTERVAL_MS);}
 
@@ -642,11 +732,12 @@ async function endGame(room, winners, customMsg, noWinner){
     room.pot=0; room.takenCardIds=new Set(); room.claimedThisRound=[]; room.claimWindowOpen=false; room.dbGameId=null;
     room.players.forEach(p=>{p.cardId=null;p.cardId2=null;p.hasPaid=false;p.disqualified=false;});
     room.players.forEach(p=>{const cl=clients[p.playerId];send(p.ws,{type:'backToCardSelection',roomId:room.roomId,stakeId:room.stakeId,balance:cl?cl.balance:10});});
-    broadcastCardPool(room); broadcastLobby();
-    if(room.players.length>=2) startCountdown(room);
-  },6000);
-}
+    broadcastCardPool(room);
+    broadcastLobby();
 
+
+},6000);
+}
 function leaveRoom(client){
   if(!client.roomId) return;
   const room=rooms[client.roomId];
@@ -663,8 +754,15 @@ function leaveRoom(client){
   room.players=room.players.filter(p=>p.playerId!==client.playerId);
   client.roomId=null;
   if(room.players.length===0){if(room.callTimer)clearTimeout(room.callTimer);if(room.countdownTimer)clearInterval(room.countdownTimer);delete rooms[room.roomId];}
-  else{broadcastCardPool(room);broadcast(room,{type:'playerLeft',playerCount:room.players.length});}
+  else{broadcastCardPool(room);
+ broadcast(room,{
+  type:'playerLeft',
+  playerCount:room.players.reduce(
+    (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+  )
+});
   broadcastLobby();
+}
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
@@ -825,12 +923,30 @@ if(sc.type==='super' && db && client.telegramId){
           room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
           client.roomId=room.roomId;
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0),stakeAmount:room.stake});
-          broadcastCardPool(room); broadcastLobby();
-             const readyPlayers=room.players.filter(p=>p.cardId).length;
-          if(readyPlayers>=2&&room.status==='waiting') startCountdown(room);
-          break;
-        }
-        case 'selectCard':{
+         
+  if(room.status==='countdown'){
+  send(ws,{
+    type:'countdown',
+    seconds:room.countdownLeft
+  });
+}
+         broadcastCardPool(room); broadcastLobby();
+          const readyPlayers=room.players.filter(
+  p=>p.cardId || p.cardId2
+).length;
+
+if(
+  room.gameType !== 'super' &&
+  readyPlayers >= 2 &&
+  room.status === 'waiting'
+){
+  startCountdown(room);
+}
+
+}
+break;
+
+case 'selectCard':{
           if(!client.roomId) break;
           const room=rooms[client.roomId];
           if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
@@ -843,7 +959,22 @@ if(sc.type==='super' && db && client.telegramId){
           // Charge only on first card pick; second card charges at game start
           // Track which card IDs changed so we only broadcast the diff, not all 400 cards
           const changedIds=new Set([cardId]);
-    if(slot===1){
+     
+if(room.gameType==='super' && db && client.telegramId){
+  const existing=await db.getSuperBoardReservation(cardId);
+
+  if(existing && String(existing.telegram_id)!==String(client.telegramId)){
+    return send(ws,{type:'error',message:'Super Board already reserved!'});
+  }
+
+  if(!existing){
+    const reserved=await db.reserveSuperBoard(client.telegramId,cardId);
+    if(!reserved){
+      return send(ws,{type:'error',message:'Unable to reserve this Super Board.'});
+    }
+  }
+}    
+if(slot===1){
   if(p.cardId) {room.takenCardIds.delete(p.cardId); changedIds.add(p.cardId);}
   if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
   if(!p.hasPaid){
@@ -868,8 +999,16 @@ if(sc.type==='super' && db && client.telegramId){
             send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:2});
           }
           broadcastCardDiff(room,Array.from(changedIds));
-const readyCount=room.players.filter(p=>p.cardId).length;
-if(readyCount>=2&&room.status==='waiting') startCountdown(room);
+           const readyCount=room.players.filter(
+  p=>p.cardId || p.cardId2
+).length;
+
+if(
+  readyCount>=2 &&
+  room.status==='waiting'
+){
+  startCountdown(room);
+}
 break;
         }
         case 'deselectCard':{
