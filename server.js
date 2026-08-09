@@ -977,8 +977,28 @@ break;
   ws.on('close',()=>{
     const c=clients[ws._pid];
     if(!c) return;
-    if(c.roomId){const room=rooms[c.roomId];if(room&&room.status==='playing'){const p=room.players.find(p=>p.playerId===c.playerId);if(p)p.ws=null;return;}leaveRoom(c);}
-    delete clients[ws._pid]; broadcastLobby();
+
+    if(c.roomId){
+      const room=rooms[c.roomId];
+
+      if(room){
+        const p=room.players.find(p=>p.playerId===c.playerId);
+
+        if(p){
+          // Keep the player's selected cards when the Mini App is closed.
+          // The reconnect handler can restore this player by Telegram ID.
+          p.ws=null;
+          p.disconnectedAt=Date.now();
+        }
+
+        // Do NOT call leaveRoom() here.
+        // This keeps cardId/cardId2 and takenCardIds intact.
+        broadcastCardPool(room);
+        broadcastLobby();
+      }
+    }
+
+    delete clients[ws._pid];
   });
   ws.on('error',()=>{});
 });
