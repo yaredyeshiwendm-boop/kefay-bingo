@@ -214,6 +214,47 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .sound-btn{background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.25);color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,border-color .2s;flex-shrink:0}
 .sound-btn:hover{background:rgba(255,255,255,.2)}
 .sound-btn.muted{background:rgba(239,68,68,.2);border-color:var(--red);color:var(--red)}
+
+.pool-btn.reserved-mine{background:#f59e0b!important;color:#111!important;border:2px solid #facc15!important;box-shadow:0 0 12px #f59e0b!important;}
+.pool-btn.taken-other{background:#ef4444!important;color:#fff!important;border:2px solid #f87171!important;opacity:.9!important;}
+.pool-btn.mine1{background:#22c55e!important;color:#fff!important;border:2px solid #4ade80!important;box-shadow:0 0 12px #22c55e!important;}
+.pool-btn.mine2{background:#3b82f6!important;color:#fff!important;border:2px solid #60a5fa!important;box-shadow:0 0 12px #3b82f6!important;}
+
+
+
+<style id="kefay-card-status">
+.pool-btn.taken-other{
+  background:#ef4444 !important;
+  color:#fff !important;
+  border:2px solid #fca5a5 !important;
+  opacity:1 !important;
+  cursor:not-allowed !important;
+}
+
+.pool-btn.reserved-mine{
+  background:#f59e0b !important;
+  color:#111 !important;
+  border:2px solid #fde047 !important;
+  opacity:1 !important;
+  box-shadow:0 0 12px rgba(245,158,11,.8) !important;
+}
+
+.pool-btn.mine1{
+  background:#22c55e !important;
+  color:#fff !important;
+  border:2px solid #86efac !important;
+  opacity:1 !important;
+  box-shadow:0 0 12px rgba(34,197,94,.8) !important;
+}
+
+.pool-btn.mine2{
+  background:#3b82f6 !important;
+  color:#fff !important;
+  border:2px solid #93c5fd !important;
+  opacity:1 !important;
+  box-shadow:0 0 12px rgba(59,130,246,.8) !important;
+}
+</style>
 </style>
 </head>
 <body>
@@ -716,7 +757,7 @@ let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
 const gameMode = new URLSearchParams(location.search).get('game') || 'normal';
-let cardPool=[];
+let cardPool=[]; let reservedSuperBoards=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
 function getTelegramId(){
@@ -821,13 +862,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   } else {
     goScreen('screenLobby');
   }
-  break;
+        myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null; reservedSuperBoards=msg.reservedSuperBoards||[]; console.log("🔥 JOINED RESERVED:", msg.reservedSuperBoards, "CLIENT:", reservedSuperBoards);
 
+        console.log("🔥 RESERVED SUPER BOARDS:", reservedSuperBoards);
     case 'lobbyUpdate': renderStakes(msg.stakes); break;
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
-      myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null;
+      myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null; reservedSuperBoards=msg.reservedSuperBoards||[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
       resetSlotUI();
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
@@ -844,15 +886,20 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'cardPoolDiff':
-      // Only a few cards changed — patch the local array + DOM directly,
-      // instead of re-rendering the whole 400-card grid (fixes lag with many players)
-      msg.changes.forEach(ch=>{
-        const idx=cardPool.findIndex(c=>c.id===ch.id);
-        if(idx>=0) cardPool[idx]={...cardPool[idx],...ch};
-        patchCardButton(ch);
-      });
-      updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
-      break;
+        // Keep the user's Super Bingo reservations
+        if(Array.isArray(msg.reservedSuperBoards)){
+          reservedSuperBoards=msg.reservedSuperBoards.map(Number);
+        }
+
+        // Patch only cards whose state changed
+        msg.changes.forEach(ch=>{
+          const idx=cardPool.findIndex(c=>c.id===ch.id);
+          if(idx>=0) cardPool[idx]={...cardPool[idx],...ch};
+          patchCardButton(ch);
+        });
+
+        updatePrizePot(msg.playerCount||0,msg.stakeAmount||0);
+        break;
 
     case 'cardSelected':
       if(msg.slot===2){
@@ -1379,34 +1426,83 @@ function resetSlotUI(){
 function renderCardPool(pool){
   const grid=document.getElementById('poolGrid');
   const search=parseInt(document.getElementById('cardSearch').value)||0;
+
   grid.innerHTML='';
+
   pool.forEach(c=>{
-    if(search>0&&c.id!==search) return;
-    const btn=document.createElement('div'); btn.className='pool-btn'; btn.id='cardbtn-'+c.id; btn.innerText=`#${c.id}`;
-    if(c.id===myCardId) btn.classList.add('mine1');
-    else if(c.id===myCardId2) btn.classList.add('mine2');
-    else if(c.taken) btn.classList.add('taken');
-    else btn.onclick=()=>pickCard(c.id);
-    // Allow deselecting own cards
-    if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
-    if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
+    if(search>0 && c.id!==search) return;
+
+    const btn=document.createElement("div");
+
+    btn.className="pool-btn";
+    btn.id="cardbtn-"+c.id;
+    btn.innerText=`#${c.id}`;
+
+    if(c.id===myCardId){
+      btn.classList.add("mine1");
+      btn.onclick=()=>deselectCard(1);
+
+    }else if(c.id===myCardId2){
+      btn.classList.add("mine2");
+      btn.onclick=()=>deselectCard(2);
+
+    }else if(reservedSuperBoards.includes(c.id)){
+      btn.classList.add("reserved-mine");
+      btn.onclick=()=>pickCard(c.id);
+
+    }else if(c.taken){
+      btn.classList.add("taken-other");
+
+    }else{
+      btn.onclick=()=>pickCard(c.id);
+    }
+
     grid.appendChild(btn);
   });
 }
+
 // Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
 // all 400 buttons just because one card's taken/free state changed.
-function patchCardButton(c){
-  const btn=document.getElementById('cardbtn-'+c.id);
+  function patchCardButton(c){
+  const btn=document.getElementById("cardbtn-"+c.id);
+
   if(!btn) return;
-  btn.classList.remove('mine1','mine2','taken');
+
+  btn.classList.remove(
+    "mine1",
+    "mine2",
+    "taken",
+    "reserved-mine",
+    "taken-other"
+  );
+
   btn.onclick=null;
-  if(c.id===myCardId) btn.classList.add('mine1');
-  else if(c.id===myCardId2) btn.classList.add('mine2');
-  else if(c.taken) btn.classList.add('taken');
-  else btn.onclick=()=>pickCard(c.id);
-  if(c.id===myCardId) btn.onclick=()=>deselectCard(1);
-  if(c.id===myCardId2) btn.onclick=()=>deselectCard(2);
+
+  if(c.id===myCardId){
+
+    btn.classList.add("mine1");
+    btn.onclick=()=>deselectCard(1);
+
+  }else if(c.id===myCardId2){
+
+    btn.classList.add("mine2");
+    btn.onclick=()=>deselectCard(2);
+
+  }else if(reservedSuperBoards.includes(c.id)){
+
+    btn.classList.add("reserved-mine");
+    btn.onclick=()=>pickCard(c.id);
+
+  }else if(c.taken){
+
+    btn.classList.add("taken-other");
+
+  }else{
+
+    btn.onclick=()=>pickCard(c.id);
+  }
 }
+
 function pickCard(cardId){
   if(!myCardId){
     // First card — wait for server to confirm before updating UI
@@ -1848,3 +1944,33 @@ loadPaymentInfo();
 </script>
 </body>
 </html>
+
+<style>
+.pool-btn.reserved-mine{
+  background:#f59e0b!important;
+  color:#111!important;
+  border:2px solid #facc15!important;
+  box-shadow:0 0 12px #facc15!important;
+}
+
+.pool-btn.taken-other{
+  background:#ef4444!important;
+  color:#fff!important;
+  border:2px solid #f87171!important;
+  opacity:1!important;
+}
+
+.pool-btn.mine1{
+  background:#22c55e!important;
+  color:#fff!important;
+  border:2px solid #4ade80!important;
+  box-shadow:0 0 12px #22c55e!important;
+}
+
+.pool-btn.mine2{
+  background:#3b82f6!important;
+  color:#fff!important;
+  border:2px solid #60a5fa!important;
+  box-shadow:0 0 12px #3b82f6!important;
+}
+</style>

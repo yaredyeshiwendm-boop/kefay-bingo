@@ -101,6 +101,17 @@ if (process.env.DATABASE_URL) {
         );
         return r[0].id;
       },
+        async addGameParticipant(gameId, tid, cardId, isDisqualified=false) {
+          await this.q(
+            `INSERT INTO game_participants (game_id, user_id, card_id, is_disqualified)
+             SELECT $1, id, $3, $4
+             FROM users WHERE telegram_id=$2
+             ON CONFLICT (game_id, user_id)
+             DO UPDATE SET card_id=EXCLUDED.card_id, is_disqualified=EXCLUDED.is_disqualified`,
+            [gameId, String(tid), cardId, isDisqualified]
+          );
+        },
+
       async endGame(gameId, tids, winAmount, isSplit, called) {
         await this.q(
           `UPDATE games SET status='finished',winner_ids=$1,win_amount=$2,is_split=$3,called_numbers=$4,ended_at=NOW() WHERE id=$5`,
@@ -261,6 +272,18 @@ async lockSuperBoardForGame(cardId, gameId) {
        AND status='locked'
      RETURNING *`,
     [gameId, cardId]
+  );
+  return r[0] || null;
+},
+
+async finishSuperBoard(cardId) {
+  const r = await this.q(
+    `UPDATE super_board_reservations
+     SET status='finished'
+     WHERE card_id=$1
+       AND status='playing'
+     RETURNING *`,
+    [cardId]
   );
   return r[0] || null;
 },
@@ -463,22 +486,41 @@ function broadcastCardPool(room){
     0
   );
 
-  room.players.forEach(p => send(p.ws,{
-    type:'cardPoolUpdate',
-    pool:base.map(c => ({
-      ...c,
-      takenByMe:p.cardId===c.id || p.cardId2===c.id
-    })),
-    playerCount:cardCount,
-    stakeAmount:room.stake,
-    gameType:room.gameType,
-    totalCards:pool.length
-  }));
+  room.players.forEach(async p => {
+
+    let reservedSuperBoards=[];
+
+    if(room.gameType==='super' && db && p.telegramId){
+      try{
+        const rows=await db.getUserSuperBoards(p.telegramId);
+        reservedSuperBoards=rows.map(r=>Number(r.card_id));
+      }catch(e){
+        console.error('Super reservation pool error:',e.message);
+      }
+    }
+
+    send(p.ws,{
+      type:'cardPoolUpdate',
+
+      pool:base.map(c => ({
+        ...c,
+        takenByMe:p.cardId===c.id || p.cardId2===c.id
+      })),
+
+      reservedSuperBoards,
+
+      playerCount:cardCount,
+      stakeAmount:room.stake,
+      gameType:room.gameType,
+      totalCards:pool.length
+    });
+  });
 }
+
 // Lightweight update: tell everyone in the room only WHICH card(s) changed state,
 // instead of re-sending the entire 400-card array on every single pick.
 // This is the #1 fix for handling 400 concurrent players smoothly.
-function broadcastCardDiff(room, changedCardIds){
+async function broadcastCardDiff(room, changedCardIds){
   const cardCount=room.players.reduce(
     (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
   );
@@ -488,19 +530,33 @@ function broadcastCardDiff(room, changedCardIds){
     taken:room.takenCardIds.has(id)
   }));
 
-  room.players.forEach(p=>send(p.ws,{
-    type:'cardPoolDiff',
-    changes:changes.map(c=>({
-      ...c,
-      takenByMe:p.cardId===c.id||p.cardId2===c.id
-    })),
-    playerCount:cardCount,
-    stakeAmount:room.stake,
-    gameType:room.gameType,
-    totalCards:room.gameType==='super'
-      ? SUPER_TOTAL_CARDS
-      : NORMAL_TOTAL_CARDS
-  }));
+  for(const p of room.players){
+    let reservedSuperBoards=[];
+
+    if(room.gameType==='super' && db && p.telegramId){
+      try{
+        const rows=await db.getUserSuperBoards(p.telegramId);
+        reservedSuperBoards=rows.map(r=>Number(r.card_id));
+      }catch(e){
+        console.error('Super reservation diff error:',e.message);
+      }
+    }
+
+    send(p.ws,{
+      type:'cardPoolDiff',
+      changes:changes.map(c=>({
+        ...c,
+        takenByMe:p.cardId===c.id||p.cardId2===c.id
+      })),
+      reservedSuperBoards,
+      playerCount:cardCount,
+      stakeAmount:room.stake,
+      gameType:room.gameType,
+      totalCards:room.gameType==='super'
+        ? SUPER_TOTAL_CARDS
+        : NORMAL_TOTAL_CARDS
+    });
+  }
 }
 
 // ─── GAME LIFECYCLE ──────────────────────────────────────────
@@ -590,7 +646,33 @@ room.pot = room.gameType==='super'
   : Math.floor(grossPot*(1-HOUSE_CUT));
   room.calledNumbers=[]; room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
   room.claimedThisRound=[]; room.claimWindowOpen=false;
-  if(db){try{room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);}catch(e){}}
+    if(db){
+      try{
+        room.dbGameId=await db.saveGame(room.roomId,room.stakeId,room.stake,grossPot);
+          for(const p of room.players){
+            if(!p.hasPaid) continue;
+            const cl=clients[p.playerId];
+            if(!cl || !cl.telegramId) continue;
+            if(p.cardId){
+              try{await db.addGameParticipant(room.dbGameId,cl.telegramId,p.cardId,p.disqualified);}catch(e){console.error("Participant card 1:",e.message);}
+            }
+            if(p.cardId2){
+              try{await db.addGameParticipant(room.dbGameId,cl.telegramId,p.cardId2,p.disqualified);}catch(e){console.error("Participant card 2:",e.message);}
+            }
+          }
+        if(room.gameType==="super"){
+          for(const p of room.players){
+            if(!p.hasPaid) continue;
+            if(p.cardId){
+              try{await db.lockSuperBoardForGame(p.cardId,room.dbGameId);}catch(e){console.error("Super card 1 lock:",e.message);}
+            }
+            if(p.cardId2){
+              try{await db.lockSuperBoardForGame(p.cardId2,room.dbGameId);}catch(e){console.error("Super card 2 lock:",e.message);}
+            }
+          }
+        }
+      }catch(e){console.error("DB saveGame error:",e.message);}
+    }
 
   room.players.forEach(p=>{
     if(p.cardId||p.cardId2){
@@ -710,6 +792,25 @@ async function endGame(room, winners, customMsg, noWinner){
   if(db&&room.dbGameId){
     try{await db.endGame(room.dbGameId,winnerTids,winAmount,winners.length>1,room.calledNumbers);}
     catch(e){console.error('endGame DB error:',e.message);}
+  if(db && room.gameType === 'super'){
+    for(const p of room.players){
+      if(p.cardId){
+        try{
+          await db.finishSuperBoard(p.cardId);
+        }catch(e){
+          console.error('Super card 1 finish:',e.message);
+        }
+      }
+      if(p.cardId2){
+        try{
+          await db.finishSuperBoard(p.cardId2);
+        }catch(e){
+          console.error('Super card 2 finish:',e.message);
+        }
+      }
+    }
+  }
+
   } else if(db&&!room.dbGameId){
     // saveGame failed earlier — create+close the record now so it never stays 'playing'
     try{
@@ -922,7 +1023,8 @@ if(sc.type==='super' && db && client.telegramId){
           if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'Game already running.'});
           room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
           client.roomId=room.roomId;
-          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0),stakeAmount:room.stake});
+            console.log("🔥 SUPER RESERVED BOARDS:", reservedSuperBoards.map(r=>r.card_id));
+          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0),stakeAmount:room.stake,reservedSuperBoards:reservedSuperBoards.map(r=>r.card_id)});
          
   if(room.status==='countdown'){
   send(ws,{
@@ -1011,40 +1113,162 @@ if(
 }
 break;
         }
-        case 'deselectCard':{
-          if(!client.roomId) break;
-          const room=rooms[client.roomId];
-          if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-          const p=room.players.find(p=>p.playerId===client.playerId);
-          if(!p) break;
-          if(msg.slot===2&&p.cardId2){
-            const releasedId=p.cardId2;
-            room.takenCardIds.delete(p.cardId2); p.cardId2=null;
-            // Refund second card stake
-            client.balance+=room.stake;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            broadcastCardDiff(room,[releasedId]); break;
-          } else if(msg.slot===1&&p.cardId){
-            const releasedIds=[p.cardId];
-            room.takenCardIds.delete(p.cardId); p.cardId=null;
-            // If had second card, promote it to card1, refund would be complex so just clear both
-            if(p.cardId2){releasedIds.push(p.cardId2);room.takenCardIds.delete(p.cardId2);p.cardId2=null;
+                  case 'deselectCard':{
+            if(!client.roomId) break;
+
+            const room=rooms[client.roomId];
+
+            if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
+
+            const p=room.players.find(p=>p.playerId===client.playerId);
+
+            if(!p) break;
+
+            // ── Super Bingo: release DB reservation ──
+            const releaseSuper = async (cardId)=>{
+              if(
+                room.gameType==='super' &&
+                db &&
+                client.telegramId &&
+                cardId
+              ){
+                try{
+                  await db.releaseSuperBoard(
+                    client.telegramId,
+                    cardId
+                  );
+                }catch(e){
+                  console.error(
+                    'Super board release error:',
+                    e.message
+                  );
+                }
+              }
+            };
+
+            // ── Remove Card 2 ──
+            if(msg.slot===2 && p.cardId2){
+
+              const releasedId=p.cardId2;
+
+              await releaseSuper(releasedId);
+
+              room.takenCardIds.delete(releasedId);
+              p.cardId2=null;
+
+              // Refund second card stake
               client.balance+=room.stake;
-              await saveBalance(client.telegramId,client.balance);
-              if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-              send(ws,{type:'balanceUpdate',balance:client.balance});
+
+              await saveBalance(
+                client.telegramId,
+                client.balance
+              );
+
+              if(db&&client.telegramId){
+                try{
+                  await db.logTx(
+                    client.telegramId,
+                    'stake_refund',
+                    room.stake,
+                    client.balance,
+                    room.roomId
+                  );
+                }catch(e){}
+              }
+
+              send(ws,{
+                type:'balanceUpdate',
+                balance:client.balance
+              });
+
+              broadcastCardDiff(
+                room,
+                [releasedId]
+              );
+
+              break;
+
+            // ── Remove Card 1 ──
+            }else if(msg.slot===1 && p.cardId){
+
+              const releasedIds=[p.cardId];
+
+              await releaseSuper(p.cardId);
+
+              room.takenCardIds.delete(p.cardId);
+              p.cardId=null;
+
+              // If Card 2 exists, release it too
+              if(p.cardId2){
+
+                releasedIds.push(p.cardId2);
+
+                await releaseSuper(p.cardId2);
+
+                room.takenCardIds.delete(p.cardId2);
+                p.cardId2=null;
+
+                client.balance+=room.stake;
+
+                await saveBalance(
+                  client.telegramId,
+                  client.balance
+                );
+
+                if(db&&client.telegramId){
+                  try{
+                    await db.logTx(
+                      client.telegramId,
+                      'stake_refund',
+                      room.stake,
+                      client.balance,
+                      room.roomId
+                    );
+                  }catch(e){}
+                }
+
+                send(ws,{
+                  type:'balanceUpdate',
+                  balance:client.balance
+                });
+              }
+
+              // Refund Card 1 stake
+              client.balance+=room.stake;
+              p.hasPaid=false;
+
+              await saveBalance(
+                client.telegramId,
+                client.balance
+              );
+
+              if(db&&client.telegramId){
+                try{
+                  await db.logTx(
+                    client.telegramId,
+                    'stake_refund',
+                    room.stake,
+                    client.balance,
+                    room.roomId
+                  );
+                }catch(e){}
+              }
+
+              send(ws,{
+                type:'balanceUpdate',
+                balance:client.balance
+              });
+
+              broadcastCardDiff(
+                room,
+                releasedIds
+              );
+
+              break;
             }
-            // Refund card1 stake too
-            client.balance+=room.stake; p.hasPaid=false;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake_refund',room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            broadcastCardDiff(room,releasedIds); break;
+
+            break;
           }
-          break;
-        }
         case 'claimBingo':{
           if(!client.roomId) return;
           const room=rooms[client.roomId];
