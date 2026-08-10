@@ -1378,7 +1378,36 @@ break;
             try{
               const id=await db.createDeposit(client.telegramId,amount,txRef.trim());
               if(!id) return send(ws,{type:'error',message:'Account not found in database. Please send /start to the bot again.'});
-              send(ws,{type:'depositSubmitted',message:'Deposit request submitted! Waiting for admin approval.'});
+          if (adminBot && process.env.ADMIN_TELEGRAM_ID) {
+  try {
+    const deposits = await db.getDeposits('pending');
+    const d = deposits.find(x => String(x.id) === String(id));
+
+    if (d) {
+      await adminBot.sendMessage(
+        process.env.ADMIN_TELEGRAM_ID,
+        `🔔 *NEW DEPOSIT REQUEST*\n\n` +
+        `👤 Name: *${d.name || 'Unknown'}*\n` +
+        `📱 Phone: ${d.phone || 'N/A'}\n` +
+        `💵 Amount: *${Number(d.amount).toFixed(2)} ETB*\n` +
+        `🧾 Transaction Ref: \`${d.tx_ref}\`\n\n` +
+        `🆔 Request ID: ${d.id}`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ APPROVE', callback_data: `deposit_approve_${d.id}` },
+              { text: '❌ REJECT', callback_data: `deposit_reject_${d.id}` }
+            ]]
+          }
+        }
+      );
+    }
+  } catch (e) {
+    console.error('Admin deposit notification error:', e.message);
+  }
+}
+             send(ws,{type:'depositSubmitted',message:'Deposit request submitted! Waiting for admin approval.'});
             }catch(e){console.error('Deposit error:',e.message); send(ws,{type:'error',message:'Deposit failed: '+e.message});}
           } else {
             // Memory mode: auto-approve
@@ -1399,6 +1428,34 @@ break;
             try{
               const result=await db.createWithdrawal(client.telegramId,amount);
               if(result.error) return send(ws,{type:'error',message:result.error});
+          if (adminBot && process.env.ADMIN_TELEGRAM_ID) {
+  try {
+    const withdrawals = await db.getWithdrawals('pending');
+    const w = withdrawals.find(x => String(x.id) === String(result.id));
+
+    if (w) {
+      await adminBot.sendMessage(
+        process.env.ADMIN_TELEGRAM_ID,
+        `🔔 *NEW WITHDRAWAL REQUEST*\n\n` +
+        `👤 Name: *${w.name || 'Unknown'}*\n` +
+        `📱 Phone: ${w.phone || 'N/A'}\n` +
+        `💵 Amount: *${Number(w.amount).toFixed(2)} ETB*\n\n` +
+        `🆔 Request ID: ${w.id}`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ APPROVE', callback_data: `withdraw_approve_${w.id}` },
+              { text: '❌ REJECT', callback_data: `withdraw_reject_${w.id}` }
+            ]]
+          }
+        }
+      );
+    }
+  } catch (e) {
+    console.error('Admin withdrawal notification error:', e.message);
+  }
+}
               client.balance=result.newBalance;
               send(ws,{type:'balanceUpdate',balance:client.balance});
               send(ws,{type:'withdrawalSubmitted',message:'Withdrawal request submitted! Admin will process it soon.'});
@@ -1656,11 +1713,22 @@ server.listen(PORT,()=>{
 
 // ─── BOT ─────────────────────────────────────────────────────
 // ─── BOT ─────────────────────────────────────────────────────
+let adminBot = null;
+
 function startTelegramBot(){
   const TOKEN=process.env.BOT_TOKEN, GAME_URL=process.env.GAME_URL||'https://beteseb-bingo.onrender.com';
   if(!TOKEN){console.log('ℹ️ No BOT_TOKEN');return;}
   let Bot; try{Bot=require('node-telegram-bot-api');}catch(e){console.log('ℹ️ Bot lib missing');return;}
-  const bot=new Bot(TOKEN,{polling:true}), pending={};
+  const bot=new Bot(TOKEN,{polling:true});
+adminBot = bot;
+const ADMIN_TELEGRAM_ID = String(process.env.ADMIN_TELEGRAM_ID || '');
+
+console.log(
+  ADMIN_TELEGRAM_ID
+    ? `👑 Admin Telegram notifications enabled: ${ADMIN_TELEGRAM_ID}`
+    : '⚠️ ADMIN_TELEGRAM_ID is missing'
+);
+const pending = {};
 
   const MAIN_MENU = {
     keyboard: [
@@ -1973,6 +2041,195 @@ bot.onText(/🎮 Play Now/, async msg => {
         `🆘 *Support 2*\n\nAlternate support contact:\n👤 @Kefay_supoort2`,
         { reply_markup: MAIN_MENU }
       );
+    }
+  });
+
+// ── Admin Telegram approve/reject buttons ──
+  bot.on('callback_query', async (query) => {
+    try {
+      const adminId = String(query.from.id);
+
+      // Only the configured admin can use these buttons
+      if (!ADMIN_TELEGRAM_ID || adminId !== ADMIN_TELEGRAM_ID) {
+        return bot.answerCallbackQuery(query.id, {
+          text: '⛔ Unauthorized',
+          show_alert: true
+        });
+      }
+
+      const data = String(query.data || '');
+
+      // ── Deposit ──
+      if (data.startsWith('deposit_approve_')) {
+        const id = parseInt(data.replace('deposit_approve_', ''), 10);
+
+        if (!db || !id) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '❌ Invalid deposit request',
+            show_alert: true
+          });
+        }
+
+        const result = await db.approveDeposit(id);
+
+        if (!result) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '⚠️ Already processed or not found',
+            show_alert: true
+          });
+        }
+
+        await bot.answerCallbackQuery(query.id, {
+          text: '✅ Deposit approved'
+        });
+
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id
+          }
+        );
+
+        await bot.sendMessage(
+          ADMIN_TELEGRAM_ID,
+          `✅ *Deposit Approved*\n\n` +
+          `👤 Telegram ID: ${result.telegramId}\n` +
+          `💰 Amount: ${result.amount} ETB\n` +
+          `💳 New Balance: ${result.newBalance} ETB`,
+          { parse_mode: 'Markdown' }
+        );
+
+        return;
+      }
+
+      if (data.startsWith('deposit_reject_')) {
+        const id = parseInt(data.replace('deposit_reject_', ''), 10);
+
+        if (!db || !id) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '❌ Invalid deposit request',
+            show_alert: true
+          });
+        }
+
+        const result = await db.rejectDeposit(id);
+
+        await bot.answerCallbackQuery(query.id, {
+          text: '❌ Deposit rejected'
+        });
+
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id
+          }
+        );
+
+        await bot.sendMessage(
+          ADMIN_TELEGRAM_ID,
+          `❌ *Deposit Rejected*\n\n🆔 Request ID: ${id}`,
+          { parse_mode: 'Markdown' }
+        );
+
+        return;
+      }
+
+      // ── Withdrawal ──
+      if (data.startsWith('withdraw_approve_')) {
+        const id = parseInt(data.replace('withdraw_approve_', ''), 10);
+
+        if (!db || !id) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '❌ Invalid withdrawal request',
+            show_alert: true
+          });
+        }
+
+        const result = await db.approveWithdrawal(id);
+
+        if (!result) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '⚠️ Already processed or not found',
+            show_alert: true
+          });
+        }
+
+        await bot.answerCallbackQuery(query.id, {
+          text: '✅ Withdrawal approved'
+        });
+
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id
+          }
+        );
+
+        await bot.sendMessage(
+          ADMIN_TELEGRAM_ID,
+          `✅ *Withdrawal Approved*\n\n` +
+          `👤 Telegram ID: ${result.telegramId}\n` +
+          `💸 Amount: ${result.amount} ETB`,
+          { parse_mode: 'Markdown' }
+        );
+
+        return;
+      }
+
+      if (data.startsWith('withdraw_reject_')) {
+        const id = parseInt(data.replace('withdraw_reject_', ''), 10);
+
+        if (!db || !id) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '❌ Invalid withdrawal request',
+            show_alert: true
+          });
+        }
+
+        const result = await db.rejectWithdrawal(id);
+
+        if (!result) {
+          return bot.answerCallbackQuery(query.id, {
+            text: '⚠️ Already processed or not found',
+            show_alert: true
+          });
+        }
+
+        await bot.answerCallbackQuery(query.id, {
+          text: '❌ Withdrawal rejected and refunded'
+        });
+
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id
+          }
+        );
+
+        await bot.sendMessage(
+          ADMIN_TELEGRAM_ID,
+          `❌ *Withdrawal Rejected*\n\n` +
+          `👤 Telegram ID: ${result.telegramId}\n` +
+          `💰 Refunded Balance: ${result.newBalance} ETB`,
+          { parse_mode: 'Markdown' }
+        );
+
+        return;
+      }
+
+    } catch (e) {
+      console.error('Admin callback error:', e.message);
+
+      try {
+        await bot.answerCallbackQuery(query.id, {
+          text: '❌ Operation failed',
+          show_alert: true
+        });
+      } catch (_) {}
     }
   });
 
