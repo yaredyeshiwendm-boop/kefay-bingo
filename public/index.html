@@ -1444,12 +1444,9 @@ function renderCardPool(pool){
       btn.classList.add("mine2");
       btn.onclick=()=>deselectCard(2);
 
-    }else if(c.reservedByMe){
+    }else if(reservedSuperBoards.includes(c.id)){
       btn.classList.add("reserved-mine");
       btn.onclick=()=>pickCard(c.id);
-
-    }else if(c.reservedByOther){
-      btn.classList.add("taken-other");
 
     }else if(c.taken){
       btn.classList.add("taken-other");
@@ -1461,46 +1458,50 @@ function renderCardPool(pool){
     grid.appendChild(btn);
   });
 }
+
 // Patch a single card button in place (used by cardPoolDiff) — avoids re-rendering
 // all 400 buttons just because one card's taken/free state changed.
   function patchCardButton(c){
-    const btn=document.getElementById("cardbtn-"+c.id);
-    if(!btn) return;
+  const btn=document.getElementById("cardbtn-"+c.id);
 
-    btn.classList.remove(
-      "mine1",
-      "mine2",
-      "taken",
-      "reserved-mine",
-      "taken-other"
-    );
+  if(!btn) return;
 
-    btn.onclick=null;
+  btn.classList.remove(
+    "mine1",
+    "mine2",
+    "taken",
+    "reserved-mine",
+    "taken-other"
+  );
 
-    if(c.id===myCardId){
-      btn.classList.add("mine1");
-      btn.onclick=()=>deselectCard(1);
+  btn.onclick=null;
 
-    }else if(c.id===myCardId2){
-      btn.classList.add("mine2");
-      btn.onclick=()=>deselectCard(2);
+  if(c.id===myCardId){
 
-    }else if(c.reservedByOther){
-      btn.classList.add("taken-other");
+    btn.classList.add("mine1");
+    btn.onclick=()=>deselectCard(1);
 
-    }else if(c.reservedByMe){
-      btn.classList.add("reserved-mine");
-      btn.onclick=()=>pickCard(c.id);
+  }else if(c.id===myCardId2){
 
-    }else if(c.taken){
-      btn.classList.add("taken-other");
+    btn.classList.add("mine2");
+    btn.onclick=()=>deselectCard(2);
 
-    }else{
-      btn.onclick=()=>pickCard(c.id);
-    }
+  }else if(reservedSuperBoards.includes(c.id)){
+
+    btn.classList.add("reserved-mine");
+    btn.onclick=()=>pickCard(c.id);
+
+  }else if(c.taken){
+
+    btn.classList.add("taken-other");
+
+  }else{
+
+    btn.onclick=()=>pickCard(c.id);
   }
+}
 
-  function pickCard(cardId){
+function pickCard(cardId){
   if(!myCardId){
     // First card — wait for server to confirm before updating UI
     wsSend({type:'selectCard',cardId,slot:1});

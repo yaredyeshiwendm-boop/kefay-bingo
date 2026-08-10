@@ -9,10 +9,7 @@ const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 15000,
-  idleTimeoutMillis: 30000,
-  max: 10
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 module.exports = {   async q(text, params = []) {
@@ -224,6 +221,333 @@ module.exports = {   async q(text, params = []) {
       [gameId, cardId]
     );
     return rows[0] || null;
-  }
+  },
 
+  async finishSuperBoard(cardId) {
+    const { rows } = await pool.query(
+      `UPDATE super_board_reservations
+       SET status='locked', played_at=NOW()
+       WHERE card_id=$1
+       AND status='playing'
+       RETURNING *`,
+      [cardId]
+    );
+    return rows[0] || null;
+  },
+
+  // ── Balance & transaction operations ──
+  async setBalance(telegramId, balance) {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET balance=$1, last_seen=NOW()
+       WHERE telegram_id=$2
+       RETURNING balance`,
+      [balance, String(telegramId)]
+    );
+    return rows[0]?.balance;
+  },
+
+  async logTx(telegramId, type, amount, balanceAfter, reference=null) {
+    const { rows } = await pool.query(
+      `INSERT INTO transactions
+       (user_id, type, amount, balance_after, reference)
+       SELECT id, $2, $3, $4, $5
+       FROM users
+       WHERE telegram_id=$1
+       RETURNING *`,
+      [String(telegramId), type, amount, balanceAfter, reference]
+    );
+    return rows[0] || null;
+  },
+
+  // ── Game persistence ──
+
+  async saveGame(roomId, stakeId, stakeAmount, pot) {
+    const { rows } = await pool.query(
+      `INSERT INTO games
+       (room_id, stake_id, stake_amount, pot, status, started_at)
+       VALUES ($1,$2,$3,$4,'playing',NOW())
+       RETURNING id`,
+      [roomId, stakeId, stakeAmount, pot]
+    );
+    return rows[0]?.id || null;
+  },
+
+  async addGameParticipant(gameId, telegramId, cardId, disqualified=false) {
+    const user = await this.getUser(telegramId);
+    if (!user) return null;
+
+    const { rows } = await pool.query(
+      `INSERT INTO game_participants
+       (game_id, user_id, card_id, is_disqualified)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (game_id,user_id)
+       DO UPDATE SET
+         card_id=EXCLUDED.card_id,
+         is_disqualified=EXCLUDED.is_disqualified
+       RETURNING *`,
+      [gameId, user.id, cardId, !!disqualified]
+    );
+
+    return rows[0] || null;
+  },
+
+  // ── Deposit operations ──
+
+  async createDeposit(telegramId, amount, txRef) {
+    const user = await this.getUser(telegramId);
+    if (!user) return null;
+
+    const { rows } = await pool.query(
+      `INSERT INTO deposit_requests
+       (user_id, amount, tx_ref, status)
+       VALUES ($1,$2,$3,'pending')
+       RETURNING id`,
+      [user.id, amount, txRef]
+    );
+
+    return rows[0]?.id || null;
+  },
+
+  async getDeposits(status='pending') {
+    const { rows } = await pool.query(
+      `SELECT d.*, u.telegram_id, u.name, u.phone
+       FROM deposit_requests d
+       LEFT JOIN users u ON u.id=d.user_id
+       WHERE d.status=$1
+       ORDER BY d.created_at DESC`,
+      [status]
+    );
+    return rows;
+  },
+
+  async approveDeposit(id) {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT d.*, u.telegram_id, u.balance
+         FROM deposit_requests d
+         JOIN users u ON u.id=d.user_id
+         WHERE d.id=$1 AND d.status='pending'
+         FOR UPDATE`,
+        [id]
+      );
+
+      if (!rows.length) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const d = rows[0];
+      const newBalance = Number(d.balance) + Number(d.amount);
+
+      await client.query(
+        `UPDATE users
+         SET balance=$1, last_seen=NOW()
+         WHERE id=$2`,
+        [newBalance, d.user_id]
+      );
+
+      await client.query(
+        `UPDATE deposit_requests
+         SET status='approved', approved_at=NOW()
+         WHERE id=$1`,
+        [id]
+      );
+
+      await client.query(
+        `INSERT INTO transactions
+         (user_id,type,amount,balance_after,reference)
+         VALUES ($1,'deposit',$2,$3,$4)`,
+        [d.user_id, d.amount, newBalance, `deposit:${id}`]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        id,
+        telegramId: d.telegram_id,
+        amount: Number(d.amount),
+        newBalance
+      };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  async rejectDeposit(id) {
+    const { rows } = await pool.query(
+      `UPDATE deposit_requests
+       SET status='rejected'
+       WHERE id=$1 AND status='pending'
+       RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  // ── Withdrawal operations ──
+
+  async createWithdrawal(telegramId, amount) {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT id, telegram_id, balance
+         FROM users
+         WHERE telegram_id=$1
+         FOR UPDATE`,
+        [String(telegramId)]
+      );
+
+      if (!rows.length) {
+        await client.query('ROLLBACK');
+        return { error: 'Account not found.' };
+      }
+
+      const user = rows[0];
+
+      if (Number(user.balance) < Number(amount)) {
+        await client.query('ROLLBACK');
+        return { error: 'Insufficient balance.' };
+      }
+
+      const newBalance = Number(user.balance) - Number(amount);
+
+      await client.query(
+        `UPDATE users SET balance=$1 WHERE id=$2`,
+        [newBalance, user.id]
+      );
+
+      const result = await client.query(
+        `INSERT INTO withdrawal_requests
+         (user_id, amount, status)
+         VALUES ($1,$2,'pending')
+         RETURNING id`,
+        [user.id, amount]
+      );
+
+      await client.query(
+        `INSERT INTO transactions
+         (user_id,type,amount,balance_after,reference)
+         VALUES ($1,'withdrawal',$2,$3,$4)`,
+        [user.id, -Number(amount), newBalance, `withdrawal:${result.rows[0].id}`]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        id: result.rows[0].id,
+        telegramId: user.telegram_id,
+        amount: Number(amount),
+        newBalance
+      };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  async getWithdrawals(status='pending') {
+    const { rows } = await pool.query(
+      `SELECT w.*, u.telegram_id, u.name, u.phone
+       FROM withdrawal_requests w
+       LEFT JOIN users u ON u.id=w.user_id
+       WHERE w.status=$1
+       ORDER BY w.created_at DESC`,
+      [status]
+    );
+    return rows;
+  },
+
+  async approveWithdrawal(id) {
+    const { rows } = await pool.query(
+      `UPDATE withdrawal_requests
+       SET status='approved', processed_at=NOW()
+       WHERE id=$1 AND status='pending'
+       RETURNING *`,
+      [id]
+    );
+
+    if (!rows.length) return null;
+
+    const w = rows[0];
+
+    const user = await this.getUserById(w.user_id);
+
+    return {
+      id,
+      telegramId: user?.telegram_id,
+      amount: Number(w.amount),
+      newBalance: user ? Number(user.balance) : null
+    };
+  },
+
+  async rejectWithdrawal(id) {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT w.*, u.telegram_id, u.balance
+         FROM withdrawal_requests w
+         JOIN users u ON u.id=w.user_id
+         WHERE w.id=$1 AND w.status='pending'
+         FOR UPDATE`,
+        [id]
+      );
+
+      if (!rows.length) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const w = rows[0];
+      const newBalance = Number(w.balance) + Number(w.amount);
+
+      await client.query(
+        `UPDATE users SET balance=$1 WHERE id=$2`,
+        [newBalance, w.user_id]
+      );
+
+      await client.query(
+        `UPDATE withdrawal_requests
+         SET status='rejected', processed_at=NOW()
+         WHERE id=$1`,
+        [id]
+      );
+
+      await client.query(
+        `INSERT INTO transactions
+         (user_id,type,amount,balance_after,reference)
+         VALUES ($1,'refund',$2,$3,$4)`,
+        [w.user_id, Number(w.amount), newBalance, `withdrawal_refund:${id}`]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        id,
+        telegramId: w.telegram_id,
+        amount: Number(w.amount),
+        newBalance
+      };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    },
 };
