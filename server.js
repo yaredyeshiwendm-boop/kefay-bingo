@@ -414,12 +414,42 @@ const getCard = (id, type='normal') => {
 };
 
 // ─── WIN CHECK ───────────────────────────────────────────────
-function checkWin(nums, called, marked) {
-  const cs=new Set(called), ms=new Set(marked||[]); ms.add(12);
-  const hit=i=>i===12||(cs.has(nums[i])&&ms.has(i));
-  return [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
-          [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
-          [0,6,12,18,24],[4,8,12,16,20],[0,4,20,24]].some(p=>p.every(i=>hit(i)));
+const WIN_PATTERNS = [
+  {name:'Horizontal',      cells:[0,1,2,3,4]},
+  {name:'Horizontal',      cells:[5,6,7,8,9]},
+  {name:'Horizontal',      cells:[10,11,12,13,14]},
+  {name:'Horizontal',      cells:[15,16,17,18,19]},
+  {name:'Horizontal',      cells:[20,21,22,23,24]},
+
+  {name:'Vertical',        cells:[0,5,10,15,20]},
+  {name:'Vertical',        cells:[1,6,11,16,21]},
+  {name:'Vertical',        cells:[2,7,12,17,22]},
+  {name:'Vertical',        cells:[3,8,13,18,23]},
+  {name:'Vertical',        cells:[4,9,14,19,24]},
+
+  {name:'Diagonal',        cells:[0,6,12,18,24]},
+  {name:'Diagonal',        cells:[4,8,12,16,20]},
+
+  {name:'Four Corners',    cells:[0,4,20,24]}
+];
+
+function getWinningPatterns(nums, called, marked){
+  const cs=new Set(called||[]);
+  const ms=new Set(marked||[]);
+  ms.add(12);
+
+  const hit=i=>{
+    return i===12 || (cs.has(nums[i]) && ms.has(i));
+  };
+
+  return WIN_PATTERNS
+    .filter(p=>p.cells.every(i=>hit(i)))
+    .map(p=>p.name)
+    .filter((name,i,arr)=>arr.indexOf(name)===i);
+}
+
+function checkWin(nums, called, marked){
+  return getWinningPatterns(nums, called, marked).length>0;
 }
 
 // ─── STATE ───────────────────────────────────────────────────
@@ -462,7 +492,10 @@ function broadcastLobby(){
   setTimeout(()=>{
     broadcastLobby._pending=false;
     const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+      if(r) console.log('👥 LOBBY DEBUG',s.id,r.players.map(p=>({id:p.playerId,paid:p.hasPaid,card1:p.cardId,card2:p.cardId2})));
+      return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,
+     playerCount:r?
+     r.players.filter(p=>p.hasPaid&&(p.cardId||p.cardId2)).length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
     const payloadStr=JSON.stringify({type:'lobbyUpdate',stakes:payload});
     Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
@@ -756,8 +789,29 @@ function evaluateClaims(room){
     // Check card 2
     const card2=p.cardId2?getCard(p.cardId2,room.gameType):null;
     const win2=card2&&checkWin(card2.numbers,room.calledNumbers,claim.markedIndices2);
-    if(win1||win2) winners.push(p);
-    else cheaters.push(p);
+
+    if(win1||win2){
+      // Save the exact winning card(s) and marked cells for the winner screen.
+      p.winningCards=[];
+
+      if(win1 && card1){
+        p.winningCards.push({
+          cardId: p.cardId,
+          numbers: card1.numbers,
+          markedIndices: Array.from(new Set([...(claim.markedIndices||[]),12]))
+        });
+      }
+
+      if(win2 && card2){
+        p.winningCards.push({
+          cardId: p.cardId2,
+          numbers: card2.numbers,
+          markedIndices: Array.from(new Set([...(claim.markedIndices2||[]),12]))
+        });
+      }
+
+      winners.push(p);
+    } else cheaters.push(p);
   });
 
   cheaters.forEach(p=>{
@@ -832,7 +886,20 @@ async function endGame(room, winners, customMsg, noWinner){
     isSplit?`🤝 Split! ${winnerNames.join(' & ')} each win ${winAmount} ETB!`
            :`🏆 ${winnerNames[0]} wins ${winAmount} ETB!`);
 
-  broadcast(room,{type:'gameOver',winners:winnerNames,winAmount,isSplit,message:msg,noWinner:!!noWinner});
+  const winnerCards = (winners||[]).map(w=>({
+    playerName:w.playerName,
+    cards:w.winningCards||[]
+  }));
+
+  broadcast(room,{
+    type:'gameOver',
+    winners:winnerNames,
+    winAmount,
+    isSplit,
+    message:msg,
+    noWinner:!!noWinner,
+    winnerCards
+  });
 
   setTimeout(()=>{
     if(!rooms[room.roomId]) return;
@@ -880,7 +947,7 @@ wss.on('connection',(ws)=>{
   clients[playerId]=client; ws._pid=playerId;
 
   const lobbyStakes=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
-    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
+    return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,playerCount:r?r.players.filter(p=>p.hasPaid&&(p.cardId||p.cardId2)).length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
   send(ws,{type:'connected',playerId,balance:10,stakes:lobbyStakes});
 
   ws.on('message',async raw=>{
@@ -965,7 +1032,7 @@ wss.on('connection',(ws)=>{
             cardNumbers2:card2?card2.numbers:[],
             calledNumbers:room.calledNumbers,
             pot:room.pot,
-            playerCount:room.players.length
+            playerCount:room.players.filter(p=>p.hasPaid&&(p.cardId||p.cardId2)).length
           });
 
           send(ws,{

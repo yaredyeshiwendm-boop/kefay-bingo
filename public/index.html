@@ -201,6 +201,16 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .winner-amount{font-size:32px;font-weight:700;color:var(--green);margin:4px 0}
 .winner-split-tag{background:rgba(245,197,24,.15);border:1px solid var(--gold);color:var(--gold);padding:5px 14px;border-radius:20px;font-size:12px;margin:6px 0}
 .winner-msg{font-size:13px;color:var(--gray);margin-top:8px;max-width:280px}
+.winner-card-title{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;color:var(--gold);margin:12px 0 6px}
+.winner-card-box{background:var(--panel);border:1px solid var(--gold);border-radius:12px;padding:8px;width:min(310px,90vw);box-shadow:0 0 20px rgba(245,197,24,.18)}
+.winner-card-label{font-size:11px;color:var(--gray);margin-bottom:6px}
+.winner-bingo-header,.winner-bingo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.winner-bingo-head{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:900;padding:5px;border-radius:4px;color:#fff}
+.winner-bingo-cell{display:flex;align-items:center;justify-content:center;height:38px;background:#fff;color:#1a0a2e;border-radius:5px;font-size:13px;font-weight:800}
+.winner-bingo-cell.win-mark{background:#facc15!important;color:#1a0a2e!important;box-shadow:0 0 8px rgba(250,204,21,.65)}
+.winner-bingo-cell.free{background:var(--purple)!important;color:#fff!important}
+.winner-cards-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;max-height:45vh;overflow-y:auto;width:100%}
+
 .disq-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:400;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:30px}
 .disq-overlay.show{display:flex;animation:overlayIn .3s ease}
 .disq-icon{font-size:72px;margin-bottom:12px}
@@ -549,6 +559,9 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="winner-amount" id="winnerAmount">0 ETB</div>
   <div class="winner-split-tag" id="splitTag" style="display:none">🤝 Split Prize</div>
   <div class="winner-msg" id="winnerMsg"></div>
+
+  <div class="winner-card-title">🃏 WINNING CARD</div>
+  <div id="winnerCardsWrap" class="winner-cards-wrap"></div>
 </div>
 
 <div class="disq-overlay" id="disqOverlay">
@@ -1319,13 +1332,90 @@ function claimBingo(){
 }
 
 // ─── WINNER OVERLAY ───────────────────────────────────────────
+function renderWinnerCards(winnerCards){
+  const wrap=document.getElementById('winnerCardsWrap');
+  wrap.innerHTML='';
+
+  if(!winnerCards||!winnerCards.length){
+    wrap.innerHTML='<div style="color:var(--gray);font-size:12px">Winning card unavailable</div>';
+    return;
+  }
+
+  winnerCards.forEach((winner)=>{
+    const cards=winner.cards||[];
+
+    cards.forEach((card,cardIndex)=>{
+      const box=document.createElement('div');
+      box.className='winner-card-box';
+
+      const label=document.createElement('div');
+      label.className='winner-card-label';
+      label.innerText=`${winner.playerName||'Winner'} • Card #${card.cardId||'-'}`;
+      box.appendChild(label);
+
+      const header=document.createElement('div');
+      header.className='winner-bingo-header';
+
+      ['B','I','N','G','O'].forEach(letter=>{
+        const h=document.createElement('div');
+        h.className='winner-bingo-head';
+        h.innerText=letter;
+        header.appendChild(h);
+      });
+
+      box.appendChild(header);
+
+      const grid=document.createElement('div');
+      grid.className='winner-bingo-grid';
+
+      const marked=new Set(card.markedIndices||[]);
+      const nums=card.numbers||[];
+
+      for(let i=0;i<25;i++){
+        const cell=document.createElement('div');
+        cell.className='winner-bingo-cell';
+
+        if(i===12){
+          cell.classList.add('free');
+          cell.innerText='FREE';
+        }else{
+          cell.innerText=nums[i] ?? '';
+          if(marked.has(i)){
+            cell.classList.add('win-mark');
+          }
+        }
+
+        grid.appendChild(cell);
+      }
+
+      box.appendChild(grid);
+      wrap.appendChild(box);
+    });
+  });
+}
+
 function showWinnerOverlay(msg){
   const ov=document.getElementById('winnerOverlay');
-  document.getElementById('winnerName').innerText=msg.winners&&msg.winners.length?msg.winners.join(' & '):msg.noWinner?'No Winner':'-';
-  document.getElementById('winnerAmount').innerText=msg.noWinner?'—':`${msg.winAmount} ETB`;
-  document.getElementById('splitTag').style.display=msg.isSplit?'inline-block':'none';
+
+  document.getElementById('winnerName').innerText=
+    msg.winners&&msg.winners.length
+      ? msg.winners.join(' & ')
+      : msg.noWinner
+        ? 'No Winner'
+        : '-';
+
+  document.getElementById('winnerAmount').innerText=
+    msg.noWinner?'—':`${msg.winAmount} ETB`;
+
+  document.getElementById('splitTag').style.display=
+    msg.isSplit?'inline-block':'none';
+
   document.getElementById('winnerMsg').innerText=msg.message||'';
-  ov.classList.add('show'); startConfetti();
+
+  renderWinnerCards(msg.winnerCards);
+
+  ov.classList.add('show');
+  startConfetti();
 }
 function hideWinnerOverlay(){document.getElementById('winnerOverlay').classList.remove('show');stopConfetti();}
 
