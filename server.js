@@ -347,7 +347,7 @@ async releaseSuperBoard(tid, cardId) {
 
 // ─── CONFIG ──────────────────────────────────────────────────
 const LOBBY_WAIT_MS    = 50000;
-const CALL_INTERVAL_MS = 3000;
+const CALL_INTERVAL_MS = 5000;
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
 const NORMAL_TOTAL_CARDS = 400;
