@@ -2222,7 +2222,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       }
 
     } catch (e) {
-      console.error('Admin callback error:', e.message);
+      console.error('Admin callback error:', e);
 
       try {
         await bot.answerCallbackQuery(query.id, {
