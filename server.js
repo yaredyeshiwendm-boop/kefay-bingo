@@ -185,7 +185,7 @@ if (process.env.DATABASE_URL) {
       },
       async approveWithdrawal(id) {
         const r = await this.q(
-          `UPDATE withdrawal_requests SET status='approved',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
+          `UPDATE withdrawal_requests SET status='approved',processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
         );
         if (!r[0]) return null;
         const wr = r[0];
@@ -196,7 +196,7 @@ if (process.env.DATABASE_URL) {
       async rejectWithdrawal(id) {
         // Refund the balance
         const r = await this.q(
-          `UPDATE withdrawal_requests SET status='rejected',handled_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
+          `UPDATE withdrawal_requests SET status='rejected',processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING *`, [id]
         );
         if (!r[0]) return null;
         const wr = r[0];
