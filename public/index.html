@@ -1575,9 +1575,12 @@ function renderStakes(arr){
     const d=document.createElement('div');
     d.className='stake-card';
 
-    const statusText=s.status==='countdown'
-      ? `Starting in ${s.countdown||0}s`
-      : `${s.playerCount||0} players • ${s.status||'waiting'}`;
+    const livePlayerCount =
+  s.status==='waiting' ? 0 : (s.playerCount||0);
+
+const statusText=s.status==='countdown'
+  ? `Starting in ${s.countdown||0}s`
+  : `${livePlayerCount} players • ${s.status||'waiting'}`;
 
     d.innerHTML=`
       <div class="stake-etb">${s.amount} ETB</div>
