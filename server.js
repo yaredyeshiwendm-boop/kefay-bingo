@@ -47,9 +47,11 @@ if (process.env.DATABASE_URL) {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
-      max: 20,                      // cap concurrent DB connections
+      max: 10,                      // cap concurrent DB connections
       idleTimeoutMillis: 30000,     // close idle connections after 30s
-      connectionTimeoutMillis: 15000 // fail fast instead of hanging under load
+      connectionTimeoutMillis: 30000, // allow more time for Render DB
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000
     });
 
     db = {
@@ -227,16 +229,69 @@ if (process.env.DATABASE_URL) {
 
 // ── Super Bingo Board Reservations ──
 async reserveSuperBoard(tid, cardId) {
-  const r = await this.q(
-    `INSERT INTO super_board_reservations
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const userResult = await client.query(
+      `SELECT id, balance
+       FROM users
+       WHERE telegram_id=$1
+       FOR UPDATE`,
+      [String(tid)]
+    );
+
+    if (!userResult.rows[0]) {
+      throw new Error('User not found');
+    }
+
+    const user = userResult.rows[0];
+    const amount = 50;
+
+    if (Number(user.balance) < amount) {
+      throw new Error(`Need ${amount} ETB. Please deposit.`);
+    }
+
+    const reservationResult = await client.query(
+      `INSERT INTO super_board_reservations
        (user_id, card_id, stake_amount, jackpot, status)
-     SELECT id, $2, 50.00, 10000.00, 'locked'
-     FROM users
-     WHERE telegram_id=$1
-     RETURNING *`,
-    [String(tid), cardId]
-  );
-  return r[0] || null;
+       VALUES ($1, $2, $3, 10000.00, 'locked')
+       ON CONFLICT (card_id, status) DO NOTHING
+       RETURNING *`,
+      [user.id, cardId, amount]
+    );
+
+    if (!reservationResult.rows[0]) {
+      throw new Error('Card already taken!');
+    }
+
+    const newBalance = Number(user.balance) - amount;
+
+    await client.query(
+      `UPDATE users
+       SET balance=$1
+       WHERE id=$2`,
+      [newBalance, user.id]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      reservation: reservationResult.rows[0],
+      balance: newBalance
+    };
+
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
+
+    throw e;
+
+  } finally {
+    client.release();
+  }
 },
 
 async getUserSuperBoards(tid) {
@@ -473,39 +528,78 @@ function getRoomCardPool(room){
     : NORMAL_CARD_POOL;
 }
 
-function broadcastCardPool(room){
+async function broadcastCardPool(room){
   const pool = getRoomCardPool(room);
 
-  const base = pool.map(c => ({
-    id: c.id,
-    taken: room.takenCardIds.has(c.id)
-  }));
+  // Super Bingo: load ALL currently locked reservations
+  // so every player can see which boards belong to someone else.
+  let reservations = [];
+
+  if(room.gameType==='super' && db){
+    try{
+      reservations = await db.q(`
+        SELECT sbr.card_id, u.telegram_id
+        FROM super_board_reservations sbr
+        JOIN users u ON u.id=sbr.user_id
+        WHERE sbr.status='locked'
+      `);
+    }catch(e){
+      console.error('Super reservation pool error:',e.message);
+    }
+  }
+
+  const reservationMap = new Map(
+    reservations.map(r=>[
+      Number(r.card_id),
+      String(r.telegram_id)
+    ])
+  );
+
+    console.log(
+      '🔴 SUPER POOL:',
+      reservations.map(r => ({
+        cardId: Number(r.card_id),
+        telegramId: String(r.telegram_id)
+      }))
+    );
+
 
   const cardCount = room.players.reduce(
     (sum,p) => sum + (p.cardId ? 1 : 0) + (p.cardId2 ? 1 : 0),
     0
   );
 
-  room.players.forEach(async p => {
+  room.players.forEach(p=>{
+        if(ownerTid){ console.log("🔴 CARD", c.id, "OWNER:", ownerTid, "VIEWER:", myTid); }
+    const myTid = String(p.telegramId || '');
 
-    let reservedSuperBoards=[];
-
-    if(room.gameType==='super' && db && p.telegramId){
-      try{
-        const rows=await db.getUserSuperBoards(p.telegramId);
-        reservedSuperBoards=rows.map(r=>Number(r.card_id));
-      }catch(e){
-        console.error('Super reservation pool error:',e.message);
-      }
-    }
+    const reservedSuperBoards = reservations
+      .filter(r=>String(r.telegram_id)===myTid)
+      .map(r=>Number(r.card_id));
 
     send(p.ws,{
       type:'cardPoolUpdate',
 
-      pool:base.map(c => ({
-        ...c,
-        takenByMe:p.cardId===c.id || p.cardId2===c.id
-      })),
+      pool:pool.map(c=>{
+        const ownerTid = reservationMap.get(Number(c.id));
+
+        return {
+          id:c.id,
+
+          // Room state OR DB reservation
+          taken:room.takenCardIds.has(c.id) || !!ownerTid,
+
+          // Only this player's actual selected card is mine
+          takenByMe:p.cardId===c.id || p.cardId2===c.id,
+
+          // Explicit owner information for Super Bingo
+          reservedByOther:
+            !!ownerTid && ownerTid!==myTid,
+
+          reservedByMe:
+            !!ownerTid && ownerTid===myTid
+        };
+      }),
 
       reservedSuperBoards,
 
@@ -521,40 +615,72 @@ function broadcastCardPool(room){
 // instead of re-sending the entire 400-card array on every single pick.
 // This is the #1 fix for handling 400 concurrent players smoothly.
 async function broadcastCardDiff(room, changedCardIds){
-  const cardCount=room.players.reduce(
-    (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+  const cardCount = room.players.reduce(
+    (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,
+    0
   );
 
-  const changes=changedCardIds.map(id=>({
-    id,
-    taken:room.takenCardIds.has(id)
-  }));
+  // Load ALL active Super Bingo reservations
+  let reservations = [];
+
+  if(room.gameType==='super' && db){
+    try{
+      reservations = await db.q(`
+        SELECT sbr.card_id, u.telegram_id
+        FROM super_board_reservations sbr
+        JOIN users u ON u.id=sbr.user_id
+        WHERE sbr.status='locked'
+      `);
+    }catch(e){
+      console.error('Super reservation diff error:',e.message);
+    }
+  }
+
+  const reservationMap = new Map(
+    reservations.map(r=>[
+      Number(r.card_id),
+      String(r.telegram_id)
+    ])
+  );
 
   for(const p of room.players){
-    let reservedSuperBoards=[];
 
-    if(room.gameType==='super' && db && p.telegramId){
-      try{
-        const rows=await db.getUserSuperBoards(p.telegramId);
-        reservedSuperBoards=rows.map(r=>Number(r.card_id));
-      }catch(e){
-        console.error('Super reservation diff error:',e.message);
-      }
-    }
+    const myTid = String(p.telegramId || '');
+
+    const reservedSuperBoards = reservations
+      .filter(r=>String(r.telegram_id)===myTid)
+      .map(r=>Number(r.card_id));
+
+    const changes = changedCardIds.map(id=>{
+
+      const ownerTid = reservationMap.get(Number(id));
+
+      return {
+        id,
+        taken: room.takenCardIds.has(id) || !!ownerTid,
+        takenByMe:
+          p.cardId===id ||
+          p.cardId2===id,
+
+        reservedByOther:
+          !!ownerTid && ownerTid!==myTid,
+
+        reservedByMe:
+          !!ownerTid && ownerTid===myTid
+      };
+    });
 
     send(p.ws,{
       type:'cardPoolDiff',
-      changes:changes.map(c=>({
-        ...c,
-        takenByMe:p.cardId===c.id||p.cardId2===c.id
-      })),
+      changes,
       reservedSuperBoards,
       playerCount:cardCount,
       stakeAmount:room.stake,
       gameType:room.gameType,
-      totalCards:room.gameType==='super'
-        ? SUPER_TOTAL_CARDS
-        : NORMAL_TOTAL_CARDS
+      totalCards:
+        room.gameType==='super'
+          ? SUPER_TOTAL_CARDS
+          : NORMAL_TOTAL_CARDS
     });
   }
 }
@@ -1049,70 +1175,328 @@ if(
 break;
 
 case 'selectCard':{
-          if(!client.roomId) break;
-          const room=rooms[client.roomId];
-          if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
-          const cardId=parseInt(msg.cardId);
-          const slot=msg.slot===2?2:1;
-          const maxCards=room.gameType==='super'?SUPER_TOTAL_CARDS:NORMAL_TOTAL_CARDS; if(cardId<1||cardId>maxCards) break;
-          if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
-          const p=room.players.find(p=>p.playerId===client.playerId);
-          if(!p) break;
-          // Charge only on first card pick; second card charges at game start
-          // Track which card IDs changed so we only broadcast the diff, not all 400 cards
-          const changedIds=new Set([cardId]);
-     
-if(room.gameType==='super' && db && client.telegramId){
-  const existing=await db.getSuperBoardReservation(cardId);
+  if(!client.roomId) break;
 
-  if(existing && String(existing.telegram_id)!==String(client.telegramId)){
-    return send(ws,{type:'error',message:'Super Board already reserved!'});
-  }
+  const room=rooms[client.roomId];
 
-  if(!existing){
-    const reserved=await db.reserveSuperBoard(client.telegramId,cardId);
-    if(!reserved){
-      return send(ws,{type:'error',message:'Unable to reserve this Super Board.'});
+  if(!room || (room.status!=='waiting' && room.status!=='countdown')) break;
+
+  const cardId=parseInt(msg.cardId);
+  const slot=msg.slot===2 ? 2 : 1;
+
+  const maxCards=room.gameType==='super'
+    ? SUPER_TOTAL_CARDS
+    : NORMAL_TOTAL_CARDS;
+
+  if(cardId<1 || cardId>maxCards) break;
+
+  const p=room.players.find(p=>p.playerId===client.playerId);
+  if(!p) break;
+
+  // ─────────────────────────────────────────────
+  // SUPER BINGO
+  // Payment + persistent reservation happen together.
+  // ─────────────────────────────────────────────
+  if(room.gameType==='super'){
+
+    // If replacing the same slot, remove the old card first.
+    const oldCardId=slot===1 ? p.cardId : p.cardId2;
+
+    if(oldCardId){
+      room.takenCardIds.delete(oldCardId);
     }
-  }
-}    
-if(slot===1){
-  if(p.cardId) {room.takenCardIds.delete(p.cardId); changedIds.add(p.cardId);}
-  if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
-  if(!p.hasPaid){
-    client.balance-=room.stake; p.hasPaid=true;
-    await saveBalance(client.telegramId,client.balance);
-    if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-    send(ws,{type:'balanceUpdate',balance:client.balance});
-  }
-  p.cardId=cardId; room.takenCardIds.add(cardId);
-            const card=getCard(cardId);
-            send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:1});
-          } else {
-            // Second card — check balance for extra stake, charge now
-            if(p.cardId2) {room.takenCardIds.delete(p.cardId2); changedIds.add(p.cardId2);}
-            if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
-            client.balance-=room.stake;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            p.cardId2=cardId; room.takenCardIds.add(cardId);
-            const card=getCard(cardId);
-            send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:2});
-          }
-          broadcastCardDiff(room,Array.from(changedIds));
-           const readyCount=room.players.filter(
-  p=>p.cardId || p.cardId2
-).length;
 
-if(
-  readyCount>=2 &&
-  room.status==='waiting'
-){
-  startCountdown(room);
-}
-break;
+    // Never allow another currently-selected card.
+    if(
+      room.takenCardIds.has(cardId) &&
+      cardId!==oldCardId
+    ){
+      if(oldCardId) room.takenCardIds.add(oldCardId);
+
+      return send(ws,{
+        type:'error',
+        message:'Card already taken!'
+      });
+    }
+
+    // Check persistent DB reservation before charging.
+    if(db && client.telegramId){
+
+      try{
+
+        const existing=await db.getSuperBoardReservation(cardId);
+
+        if(existing && String(existing.telegram_id)!==String(client.telegramId)){
+
+          if(oldCardId) room.takenCardIds.add(oldCardId);
+
+          return send(ws,{
+            type:'error',
+            message:'Card already taken!'
+          });
         }
+
+        // If this user already owns this exact card,
+        // don't charge another 50 ETB.
+        if(existing && String(existing.telegram_id)===String(client.telegramId)){
+
+          if(slot===1){
+            p.cardId=cardId;
+          }else{
+            p.cardId2=cardId;
+          }
+
+          room.takenCardIds.add(cardId);
+
+          const card=getCard(cardId,'super');
+
+          send(ws,{
+            type:'cardSelected',
+            cardId,
+            cardNumbers:card.numbers,
+            slot
+          });
+
+          broadcastCardDiff(room,[cardId]);
+
+          break;
+        }
+
+        // Second card costs another 50 ETB.
+        // First card also costs 50 ETB.
+        const result=await db.reserveSuperBoard(
+          client.telegramId,
+          cardId
+        );
+
+        if(!result || !result.reservation){
+          if(oldCardId) room.takenCardIds.add(oldCardId);
+
+          return send(ws,{
+            type:'error',
+            message:'Could not reserve this card.'
+          });
+        }
+
+        client.balance=result.balance;
+
+        await saveBalance(
+          client.telegramId,
+          client.balance
+        );
+
+        if(db&&client.telegramId){
+          try{
+            await db.logTx(
+              client.telegramId,
+              'stake',
+              -50,
+              client.balance,
+              room.roomId
+            );
+          }catch(e){
+            console.error('Super stake log error:',e.message);
+          }
+        }
+
+        if(slot===1){
+          p.cardId=cardId;
+        }else{
+          p.cardId2=cardId;
+        }
+
+        room.takenCardIds.add(cardId);
+
+        // Reservation succeeded, so this card is paid.
+        p.hasPaid=true;
+
+        send(ws,{
+          type:'balanceUpdate',
+          balance:client.balance
+        });
+
+        const card=getCard(cardId,'super');
+
+        send(ws,{
+          type:'cardSelected',
+          cardId,
+          cardNumbers:card.numbers,
+          slot
+        });
+
+        broadcastCardDiff(
+          room,
+          oldCardId
+            ? [oldCardId,cardId]
+            : [cardId]
+        );
+
+      }catch(e){
+
+        if(oldCardId){
+          room.takenCardIds.add(oldCardId);
+        }
+
+        console.error(
+          'Super card reservation error:',
+          e.message
+        );
+
+        return send(ws,{
+          type:'error',
+          message:e.message || 'Unable to reserve card.'
+        });
+      }
+
+    }else{
+
+      return send(ws,{
+        type:'error',
+        message:'Database unavailable. Super Bingo card selection is temporarily unavailable.'
+      });
+    }
+
+    break;
+  }
+
+  // ─────────────────────────────────────────────
+  // NORMAL BINGO
+  // Existing payment logic remains unchanged.
+  // ─────────────────────────────────────────────
+
+  if(room.takenCardIds.has(cardId)){
+    return send(ws,{
+      type:'error',
+      message:'Card already taken!'
+    });
+  }
+
+  const changedIds=new Set([cardId]);
+
+  if(slot===1){
+
+    if(p.cardId){
+      room.takenCardIds.delete(p.cardId);
+      changedIds.add(p.cardId);
+    }
+
+    if(client.balance<room.stake){
+      return send(ws,{
+        type:'error',
+        message:`Need ${room.stake} ETB. Please deposit.`
+      });
+    }
+
+    if(!p.hasPaid){
+      client.balance-=room.stake;
+      p.hasPaid=true;
+
+      await saveBalance(
+        client.telegramId,
+        client.balance
+      );
+
+      if(db&&client.telegramId){
+        try{
+          await db.logTx(
+            client.telegramId,
+            'stake',
+            -room.stake,
+            client.balance,
+            room.roomId
+          );
+        }catch(e){}
+      }
+
+      send(ws,{
+        type:'balanceUpdate',
+        balance:client.balance
+      });
+    }
+
+    p.cardId=cardId;
+    room.takenCardIds.add(cardId);
+
+    const card=getCard(cardId);
+
+    send(ws,{
+      type:'cardSelected',
+      cardId,
+      cardNumbers:card.numbers,
+      slot:1
+    });
+
+  }else{
+
+    if(p.cardId2){
+      room.takenCardIds.delete(p.cardId2);
+      changedIds.add(p.cardId2);
+    }
+
+    if(client.balance<room.stake){
+      return send(ws,{
+        type:'error',
+        message:`Need ${room.stake} ETB more for second card.`
+      });
+    }
+
+    client.balance-=room.stake;
+
+    await saveBalance(
+      client.telegramId,
+      client.balance
+    );
+
+    if(db&&client.telegramId){
+      try{
+        await db.logTx(
+          client.telegramId,
+          'stake',
+          -room.stake,
+          client.balance,
+          room.roomId
+        );
+      }catch(e){}
+
+    }
+
+    send(ws,{
+      type:'balanceUpdate',
+      balance:client.balance
+    });
+
+    p.cardId2=cardId;
+    room.takenCardIds.add(cardId);
+
+    const card=getCard(cardId);
+
+    send(ws,{
+      type:'cardSelected',
+      cardId,
+      cardNumbers:card.numbers,
+      slot:2
+    });
+  }
+
+  broadcastCardDiff(
+    room,
+    Array.from(changedIds)
+  );
+
+  const readyCount=room.players.filter(
+    p=>p.cardId || p.cardId2
+  ).length;
+
+  if(
+    readyCount>=2 &&
+    room.status==='waiting'
+  ){
+    startCountdown(room);
+  }
+
+  break;
+}
+
                   case 'deselectCard':{
             if(!client.roomId) break;
 
