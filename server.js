@@ -913,17 +913,51 @@ async function endGame(room, winners, customMsg, noWinner){
 
 },6000);
 }
-function leaveRoom(client){
+async function leaveRoom(client){
   if(!client.roomId) return;
   const room=rooms[client.roomId];
   if(!room){client.roomId=null;return;}
   const p=room.players.find(p=>p.playerId===client.playerId);
   if(p){
+
+    // ── Release Super Bingo reservations when leaving ──
+    if(
+      room.gameType==='super' &&
+      db &&
+      client.telegramId &&
+      (room.status==='waiting'||room.status==='countdown')
+    ){
+      for(const cardId of [p.cardId,p.cardId2]){
+        if(!cardId) continue;
+
+        try{
+          await db.releaseSuperBoard(
+            client.telegramId,
+            cardId
+          );
+        }catch(e){
+          console.error(
+            'Super board leave release error:',
+            e.message
+          );
+        }
+      }
+    }
+
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     if(p.cardId2) room.takenCardIds.delete(p.cardId2);
+
     if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      client.balance+=room.stake; saveBalance(client.telegramId,client.balance);
-      send(client.ws,{type:'balanceUpdate',balance:client.balance});
+      client.balance+=room.stake;
+      await saveBalance(
+        client.telegramId,
+        client.balance
+      );
+
+      send(client.ws,{
+        type:'balanceUpdate',
+        balance:client.balance
+      });
     }
   }
   room.players=room.players.filter(p=>p.playerId!==client.playerId);
