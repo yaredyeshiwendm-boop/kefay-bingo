@@ -855,7 +855,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
           <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">3</div>
           <div>
             <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">Number Calling</div>
-            <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታው ሲጀምር የተለያዩ ቁጥሮች ከ1 እስከ 75 መጥራት ይጀምራሉ</div>
+                        <div style="font-size:12px;color:var(--gold);line-height:1.5">ጨዋታውን ለመጀመር ከሚመጣልን ከ1-1250 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን</div>
           </div>
         </div>
       </div>
@@ -1184,8 +1184,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     case 'gameStart':
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.players.length;
-      resetTrackerBoard(); claimWindowOpen=false; setBingoBtn('idle');
-      navGo('screenGame','navGame'); break;
+      resetTrackerBoard();
+      claimWindowOpen=false;
+      setBingoBtn('idle');
+
+      renderBothCards();
+
+      navGo('screenGame','navGame');
+      break;
 
     case 'reconnected':
       myRoomId=msg.roomId; myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
