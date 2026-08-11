@@ -73,6 +73,157 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .dual-cards-wrap .bingo-body{gap:3px}
 .dual-cards-wrap .bingo-header{margin-bottom:5px}
 
+
+/* ── NEW GAME LAYOUT ───────────────────────── */
+
+.game-stats-row{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:8px;
+  align-items:stretch;
+  margin-bottom:14px;
+}
+
+.called-stat .val{
+  color:var(--gold);
+}
+
+.current-called-wrap{
+  text-align:center;
+  margin:4px 0 12px;
+}
+
+.current-called-title{
+  font-family:'Orbitron',sans-serif;
+  font-size:11px;
+  font-weight:900;
+  color:var(--gold);
+  letter-spacing:1px;
+  margin-bottom:6px;
+}
+
+.game-board-layout{
+  display:grid;
+  grid-template-columns:105px minmax(0,1fr);
+  gap:10px;
+  align-items:start;
+}
+
+.game-board-layout .tracker-wrap{
+  margin:0;
+  padding:7px;
+}
+
+.tracker-title{
+  font-family:'Orbitron',sans-serif;
+  font-size:8px;
+  font-weight:900;
+  color:var(--gold);
+  text-align:center;
+  margin-bottom:6px;
+  letter-spacing:.5px;
+}
+
+.cards-area{
+  min-width:0;
+}
+
+.cards-area .card-container{
+  margin-bottom:12px;
+}
+
+.cards-area .card-container:last-child{
+  margin-bottom:0;
+}
+
+/* Cards are stacked vertically */
+#cardsWrap{
+  display:block;
+}
+
+#cardsWrap.dual-cards-wrap{
+  display:block;
+}
+
+#cardsWrap .card-container{
+  width:100%;
+}
+
+/* Card 2 is vertically below Card 1 */
+#cardContainer2{
+  margin-top:12px;
+}
+
+/* Each card has its own Bingo button */
+.cards-area .bingo-btn{
+  margin-top:12px;
+}
+
+.bingo-btn-card2{
+  background:#271447;
+}
+
+/* Tracker stays compact on the left */
+.tracker-grid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  grid-template-rows:repeat(15,1fr);
+  grid-auto-flow:column;
+  gap:3px;
+}
+
+.t-ball{
+  font-size:9px;
+  padding:4px 1px;
+}
+
+/* Keep the two cards vertical even if two cards are selected */
+.dual-cards-wrap .card-container{
+  margin-bottom:12px;
+  padding:10px;
+}
+
+.dual-cards-wrap .bingo-cell{
+  height:42px;
+  font-size:13px;
+}
+
+.dual-cards-wrap .bingo-col-head{
+  height:32px;
+  font-size:14px;
+}
+
+.dual-cards-wrap .bingo-body{
+  gap:4px;
+}
+
+.dual-cards-wrap .bingo-header{
+  margin-bottom:6px;
+}
+
+/* Mobile safety */
+@media(max-width:380px){
+  .game-board-layout{
+    grid-template-columns:82px minmax(0,1fr);
+    gap:7px;
+  }
+
+  .stat-box{
+    min-width:0;
+    padding:8px 4px;
+  }
+
+  .stat-box .val{
+    font-size:13px;
+  }
+
+  .bingo-cell{
+    height:42px;
+    font-size:13px;
+  }
+}
+
+
 /* GAME */
 .game-stats-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .stat-box{background:var(--panel);padding:10px 14px;border-radius:10px;border:1px solid #3c2463;text-align:center;min-width:85px}
@@ -315,41 +466,96 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 </div>
 
 <div id="screenGame" class="screen">
+
+  <!-- TOP GAME STATS -->
   <div class="game-stats-row">
-    <div class="stat-box"><div class="lbl">Prize Pot</div><div id="potVal" class="val">0</div></div>
-    <div>
-      <div id="ballCircle" class="ball-circle">
-        <span id="ballLetter" class="ball-letter">-</span>
-        <span id="ballNumber" class="ball-number">--</span>
-      </div>
-      <div id="ballSub" class="ball-sub">0/75</div>
+    <div class="stat-box">
+      <div class="lbl">Prize Pool</div>
+      <div id="potVal" class="val">0</div>
     </div>
-    <div class="stat-box"><div class="lbl">Players</div><div id="playerCountVal" class="val">0</div><div style="font-size:9px;color:var(--green)">in game</div></div>
-  </div>
-  <div class="claim-bar-wrap"><div class="claim-bar" id="claimBar"></div></div>
-  <!-- Dual cards wrapper — becomes side-by-side when two cards selected -->
-  <div id="cardsWrap">
-    <div class="card-container" id="cardContainer1">
-      <div id="cardLabel" class="card-id-tag">Card #---</div>
-      <div class="bingo-header">
-        <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
-        <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
-        <div class="bingo-col-head bh-o">O</div>
-      </div>
-      <div id="cardBody" class="bingo-body"></div>
+
+    <div class="stat-box called-stat">
+      <div class="lbl">Called Numbers</div>
+      <div id="ballSub" class="val">0/75</div>
     </div>
-    <div class="card-container" id="cardContainer2" style="display:none">
-      <div id="cardLabel2" class="card-id-tag" style="color:#d97706">Card #---</div>
-      <div class="bingo-header">
-        <div class="bingo-col-head bh-b">B</div><div class="bingo-col-head bh-i">I</div>
-        <div class="bingo-col-head bh-n">N</div><div class="bingo-col-head bh-g">G</div>
-        <div class="bingo-col-head bh-o">O</div>
-      </div>
-      <div id="cardBody2" class="bingo-body"></div>
+
+    <div class="stat-box">
+      <div class="lbl">Players</div>
+      <div id="playerCountVal" class="val">0</div>
+      <div style="font-size:9px;color:var(--green)">in game</div>
     </div>
   </div>
-  <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">🎉 BINGO!</button>
-  <div class="tracker-wrap"><div id="trackerGrid" class="tracker-grid"></div></div>
+
+  <!-- CURRENT CALLED NUMBER -->
+  <div class="current-called-wrap">
+    <div class="current-called-title">CURRENT CALLED</div>
+
+    <div id="ballCircle" class="ball-circle">
+      <span id="ballLetter" class="ball-letter">-</span>
+      <span id="ballNumber" class="ball-number">--</span>
+    </div>
+  </div>
+
+  <div class="claim-bar-wrap">
+    <div class="claim-bar" id="claimBar"></div>
+  </div>
+
+  <!-- GAME AREA: TRACKER LEFT / CARDS RIGHT -->
+  <div class="game-board-layout">
+
+    <!-- CALLED NUMBERS TRACKER -->
+    <div class="tracker-wrap">
+      <div class="tracker-title">CALLED NUMBERS</div>
+      <div id="trackerGrid" class="tracker-grid"></div>
+    </div>
+
+    <!-- PLAYER CARDS -->
+    <div class="cards-area">
+
+      <!-- CARD 1 -->
+      <div class="card-container" id="cardContainer1">
+        <div id="cardLabel" class="card-id-tag">Card #---</div>
+
+        <div class="bingo-header">
+          <div class="bingo-col-head bh-b">B</div>
+          <div class="bingo-col-head bh-i">I</div>
+          <div class="bingo-col-head bh-n">N</div>
+          <div class="bingo-col-head bh-g">G</div>
+          <div class="bingo-col-head bh-o">O</div>
+        </div>
+
+        <div id="cardBody" class="bingo-body"></div>
+
+        <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">
+          🎉 BINGO!
+        </button>
+      </div>
+
+      <!-- CARD 2 -->
+      <div class="card-container" id="cardContainer2" style="display:none">
+        <div id="cardLabel2" class="card-id-tag" style="color:#d97706">
+          Card #---
+        </div>
+
+        <div class="bingo-header">
+          <div class="bingo-col-head bh-b">B</div>
+          <div class="bingo-col-head bh-i">I</div>
+          <div class="bingo-col-head bh-n">N</div>
+          <div class="bingo-col-head bh-g">G</div>
+          <div class="bingo-col-head bh-o">O</div>
+        </div>
+
+        <div id="cardBody2" class="bingo-body"></div>
+
+        <button id="bingoBtn2" class="bingo-btn bingo-btn-card2"
+                onclick="claimBingo()">
+          🎉 BINGO!
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
 <div id="screenWallet" class="screen">
@@ -1319,10 +1525,17 @@ function startClaimBar(ms){
 }
 function cf_safe_func(){}
 function setBingoBtn(state){
-  const btn=document.getElementById('bingoBtn');
-  btn.className='bingo-btn';
-  if(state==='ready') btn.classList.add('ready');
-  if(state==='locked') btn.classList.add('locked');
+  const buttons=[
+    document.getElementById('bingoBtn'),
+    document.getElementById('bingoBtn2')
+  ];
+
+  buttons.forEach(btn=>{
+    if(!btn) return;
+    btn.className='bingo-btn';
+    if(state==='ready') btn.classList.add('ready');
+    if(state==='locked') btn.classList.add('locked');
+  });
 }
 function claimBingo(){
   if(!claimWindowOpen){showToast('⏰ Window closed — wait for next number','warn');return;}
