@@ -2327,3 +2327,96 @@ loadPaymentInfo();
   box-shadow:0 0 12px #facc15!important;
 }
 </style>
+
+<style>
+/* ── FINAL GAME SCREEN LAYOUT ── */
+/* Colors intentionally unchanged */
+
+#screenGame{
+  width:100%;
+  box-sizing:border-box;
+}
+
+/* Derash / Balls / Players */
+.game-stats-row{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  width:100%;
+  margin-bottom:14px;
+}
+
+.game-stats-row .stat-box{
+  min-width:0;
+  box-sizing:border-box;
+}
+
+/* Current Called Ball */
+.current-called-wrap{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  margin:6px 0 14px;
+}
+
+.current-called-title{
+  margin-bottom:7px;
+}
+
+/* Main game area */
+.game-board-layout{
+  display:grid;
+  grid-template-columns:105px minmax(0,1fr);
+  gap:10px;
+  width:100%;
+  align-items:start;
+}
+
+/* Bingo tracker */
+.game-board-layout .tracker-wrap{
+  width:100%;
+  box-sizing:border-box;
+}
+
+/* Cards */
+.cards-area{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+#cardsWrap{
+  width:100%;
+  display:block;
+}
+
+#cardsWrap .card-container{
+  width:100%;
+  box-sizing:border-box;
+}
+
+/* Card cells */
+.bingo-body{
+  width:100%;
+}
+
+/* Second card stays underneath */
+#cardContainer2{
+  width:100%;
+  margin-top:12px;
+}
+
+/* Mobile */
+@media(max-width:380px){
+  .game-board-layout{
+    grid-template-columns:82px minmax(0,1fr);
+    gap:7px;
+  }
+
+  .game-stats-row{
+    gap:6px;
+  }
+}
+</style>
