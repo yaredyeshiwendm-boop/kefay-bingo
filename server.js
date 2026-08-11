@@ -737,18 +737,32 @@ spectator:false});
 function checkSuperSchedule(){
   if(!isSuperBingoTime()) return;
 
-  const superRoom = Object.values(rooms).find(
+  // Prevent the scheduler from triggering the same Super Game more than once
+  // during the scheduled minute.
+  if(checkSuperSchedule._startedMinute === `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}-${new Date().getHours()}-${new Date().getMinutes()}`){
+    return;
+  }
+
+  // Super Bingo room must exist even if nobody joined before schedule time.
+  let superRoom = Object.values(rooms).find(
     r => r.gameType === 'super' &&
-         r.status === 'waiting'
+         (r.status === 'waiting' || r.status === 'countdown')
   );
 
-  if(!superRoom) return;
+  if(!superRoom){
+    superRoom = getOrCreateRoom('super50');
+    console.log('🔥 SUPER BINGO scheduled room created');
+  }
+
+  if(superRoom.status !== 'waiting') return;
 
   const readyPlayers = superRoom.players.filter(
     p => p.cardId || p.cardId2
   );
 
-  if(readyPlayers.length === 0) return;
+  if(readyPlayers.length < 2) return;
+
+  checkSuperSchedule._startedMinute = `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}-${new Date().getHours()}-${new Date().getMinutes()}`;
 
   console.log('🔥 SUPER BINGO scheduled start');
 
