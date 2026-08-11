@@ -1126,12 +1126,14 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 
     case 'cardSelected':
       if(msg.slot===2){
-        myCardId2=msg.cardId; myCardNumbers2=msg.cardNumbers;
-        updateSlotUI();
+        myCardId2=msg.cardId;
+        myCardNumbers2=msg.cardNumbers||[];
       } else {
-        myCardId=msg.cardId; myCardNumbers=msg.cardNumbers;
-        updateSlotUI();
+        myCardId=msg.cardId;
+        myCardNumbers=msg.cardNumbers||[];
       }
+      updateSlotUI();
+      renderBothCards();
       break;
 
     case 'countdown':
