@@ -1127,70 +1127,226 @@ break;
 
 case 'selectCard':{
           if(!client.roomId) break;
+
           const room=rooms[client.roomId];
+
           if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
+
           const cardId=parseInt(msg.cardId);
           const slot=msg.slot===2?2:1;
-          const maxCards=room.gameType==='super'?SUPER_TOTAL_CARDS:NORMAL_TOTAL_CARDS; if(cardId<1||cardId>maxCards) break;
-          if(room.takenCardIds.has(cardId)) return send(ws,{type:'error',message:'Card already taken!'});
+
+          const maxCards=room.gameType==='super'
+            ? SUPER_TOTAL_CARDS
+            : NORMAL_TOTAL_CARDS;
+
+          if(cardId<1||cardId>maxCards) break;
+
           const p=room.players.find(p=>p.playerId===client.playerId);
+
           if(!p) break;
-          // Charge only on first card pick; second card charges at game start
-          // Track which card IDs changed so we only broadcast the diff, not all 400 cards
-          const changedIds=new Set([cardId]);
-     
-if(room.gameType==='super' && db && client.telegramId){
-  const existing=await db.getSuperBoardReservation(cardId);
 
-  if(existing && String(existing.telegram_id)!==String(client.telegramId)){
-    return send(ws,{type:'error',message:'Super Board already reserved!'});
-  }
+          const oldCardId=slot===1?p.cardId:p.cardId2;
 
-  if(!existing){
-    const reserved=await db.reserveSuperBoard(client.telegramId,cardId);
-    if(!reserved){
-      return send(ws,{type:'error',message:'Unable to reserve this Super Board.'});
-    }
-  }
-}    
-if(slot===1){
-  if(p.cardId) {room.takenCardIds.delete(p.cardId); changedIds.add(p.cardId);}
-  if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB. Please deposit.`});
-  if(!p.hasPaid){
-    client.balance-=room.stake; p.hasPaid=true;
-    await saveBalance(client.telegramId,client.balance);
-    if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-    send(ws,{type:'balanceUpdate',balance:client.balance});
-  }
-  p.cardId=cardId; room.takenCardIds.add(cardId);
-            const card=getCard(cardId,room.gameType);
-            send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:1});
-          } else {
-            // Second card — check balance for extra stake, charge now
-            if(p.cardId2) {room.takenCardIds.delete(p.cardId2); changedIds.add(p.cardId2);}
-            if(client.balance<room.stake) return send(ws,{type:'error',message:`Need ${room.stake} ETB more for second card.`});
-            client.balance-=room.stake;
-            await saveBalance(client.telegramId,client.balance);
-            if(db&&client.telegramId){try{await db.logTx(client.telegramId,'stake',-room.stake,client.balance,room.roomId);}catch(e){}}
-            send(ws,{type:'balanceUpdate',balance:client.balance});
-            p.cardId2=cardId; room.takenCardIds.add(cardId);
-            const card=getCard(cardId,room.gameType);
-            send(ws,{type:'cardSelected',cardId,cardNumbers:card.numbers,slot:2});
+          if(room.takenCardIds.has(cardId) && cardId!==oldCardId){
+            return send(ws,{
+              type:'error',
+              message:'Card already taken!'
+            });
           }
-          broadcastCardDiff(room,Array.from(changedIds));
-           const readyCount=room.players.filter(
-  p=>p.cardId || p.cardId2
-).length;
 
-if(
-  readyCount>=2 &&
-  room.status==='waiting'
-){
-  startCountdown(room);
-}
-break;
+          const needsPayment=slot===1
+            ? !p.hasPaid
+            : !p.cardId2;
+
+          if(needsPayment && client.balance<room.stake){
+            return send(ws,{
+              type:'error',
+              message:slot===1
+                ? `Need ${room.stake} ETB. Please deposit.`
+                : `Need ${room.stake} ETB more for second card.`
+            });
+          }
+
+          // ── Super Bingo reservation ───────────────────────
+          if(room.gameType==='super' && db && client.telegramId){
+
+            const existing=await db.getSuperBoardReservation(cardId);
+
+            if(
+              existing &&
+              String(existing.telegram_id)!==String(client.telegramId)
+            ){
+              return send(ws,{
+                type:'error',
+                message:'Super Board already reserved!'
+              });
+            }
+
+            if(!existing){
+              const reserved=await db.reserveSuperBoard(
+                client.telegramId,
+                cardId
+              );
+
+              if(!reserved){
+                return send(ws,{
+                  type:'error',
+                  message:'Unable to reserve this Super Board.'
+                });
+              }
+            }
+          }
+
+          const changedIds=new Set([cardId]);
+
+          // ── Release old card when replacing ────────────────
+          if(oldCardId && oldCardId!==cardId){
+
+            room.takenCardIds.delete(oldCardId);
+            changedIds.add(oldCardId);
+
+            if(
+              room.gameType==='super' &&
+              db &&
+              client.telegramId
+            ){
+              try{
+                await db.releaseSuperBoard(
+                  client.telegramId,
+                  oldCardId
+                );
+              }catch(e){
+                console.error(
+                  'Super board old-card release error:',
+                  e.message
+                );
+
+                try{
+                  await db.releaseSuperBoard(
+                    client.telegramId,
+                    cardId
+                  );
+                }catch(_){}
+
+                return send(ws,{
+                  type:'error',
+                  message:'Unable to release previous Super Board.'
+                });
+              }
+            }
+          }
+
+          // ── Slot 1 ─────────────────────────────────────────
+          if(slot===1){
+
+            if(!p.hasPaid){
+
+              client.balance-=room.stake;
+              p.hasPaid=true;
+
+              await saveBalance(
+                client.telegramId,
+                client.balance
+              );
+
+              if(db&&client.telegramId){
+                try{
+                  await db.logTx(
+                    client.telegramId,
+                    'stake',
+                    -room.stake,
+                    client.balance,
+                    room.roomId
+                  );
+                }catch(e){}
+              }
+
+              send(ws,{
+                type:'balanceUpdate',
+                balance:client.balance
+              });
+            }
+
+            p.cardId=cardId;
+            room.takenCardIds.add(cardId);
+
+            const card=getCard(
+              cardId,
+              room.gameType
+            );
+
+            send(ws,{
+              type:'cardSelected',
+              cardId,
+              cardNumbers:card.numbers,
+              slot:1
+            });
+
+          // ── Slot 2 ─────────────────────────────────────────
+          }else{
+
+            if(!p.cardId2){
+
+              client.balance-=room.stake;
+
+              await saveBalance(
+                client.telegramId,
+                client.balance
+              );
+
+              if(db&&client.telegramId){
+                try{
+                  await db.logTx(
+                    client.telegramId,
+                    'stake',
+                    -room.stake,
+                    client.balance,
+                    room.roomId
+                  );
+                }catch(e){}
+              }
+
+              send(ws,{
+                type:'balanceUpdate',
+                balance:client.balance
+              });
+            }
+
+            p.cardId2=cardId;
+            room.takenCardIds.add(cardId);
+
+            const card=getCard(
+              cardId,
+              room.gameType
+            );
+
+            send(ws,{
+              type:'cardSelected',
+              cardId,
+              cardNumbers:card.numbers,
+              slot:2
+            });
+          }
+
+          broadcastCardDiff(
+            room,
+            Array.from(changedIds)
+          );
+
+          const readyCount=room.players.filter(
+            p=>p.cardId||p.cardId2
+          ).length;
+
+          if(
+            readyCount>=2 &&
+            room.status==='waiting'
+          ){
+            startCountdown(room);
+          }
+
+          break;
         }
-                  case 'deselectCard':{
+        case 'deselectCard':{
             if(!client.roomId) break;
 
             const room=rooms[client.roomId];
