@@ -511,6 +511,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
     <!-- PLAYER CARDS -->
     <div class="cards-area">
+      <div id="cardsWrap">
 
       <!-- CARD 1 -->
       <div class="card-container" id="cardContainer1">
@@ -1148,7 +1149,15 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       document.getElementById('playerCountVal').innerText=msg.playerCount;
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      console.log('CARD RENDER:',myCardId,myCardNumbers,myCardId2,myCardNumbers2); renderBothCards();
+      console.log('YOUR CARD DEBUG:', {
+  cardId: myCardId,
+  numbers: myCardNumbers,
+  numbersLength: myCardNumbers.length,
+  cardId2: myCardId2,
+  numbers2: myCardNumbers2,
+  numbers2Length: myCardNumbers2.length
+});
+renderBothCards();
       document.getElementById('bingoBtn').style.display='flex';
       break;
 
