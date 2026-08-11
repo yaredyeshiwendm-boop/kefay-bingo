@@ -1712,8 +1712,18 @@ function refreshCardCells(){
  function updatePrizePot(cardCount, stakeAmount){
   const el=document.getElementById('cdPrizePot');
   if(!el) return;
+
+  // Super Bingo has a fixed prize pool.
+  if(myStakeId === 'super50'){
+    el.innerText = '🏆 Prize Pool: 10,000 ETB';
+    return;
+  }
+
+  // Normal Bingo prize pool remains dynamic.
   const pot=Math.floor(cardCount * stakeAmount * 0.8);
-  el.innerText = pot > 0 ? `🏆 Prize Pool: ${pot} ETB` : '🏆 Prize grows as players join';
+  el.innerText = pot > 0
+    ? `🏆 Prize Pool: ${pot} ETB`
+    : '🏆 Prize grows as players join';
 }
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
