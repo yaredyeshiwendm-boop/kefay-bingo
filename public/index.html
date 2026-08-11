@@ -2356,106 +2356,118 @@ loadPaymentInfo();
 <style>
 
 <style id="kefay-game-final-v2">
-/* =========================================================
-   KEFAY BINGO — FINAL GAME SCREEN
-   This block intentionally overrides previous game CSS.
-   ========================================================= */
+/* KEFAY BINGO — COMPACT ONE-SCREEN GAME LAYOUT */
 
 #screenGame{
   width:100% !important;
   max-width:500px !important;
+  height:100dvh !important;
+  max-height:100dvh !important;
   margin:0 auto !important;
-  padding:10px !important;
+  padding:6px !important;
   box-sizing:border-box !important;
+  overflow:hidden !important;
+  position:relative !important;
 }
 
 /* TOP STATS */
-#screenGame .game-stats-row{
+#screenGame .game-board-layout{
   display:grid !important;
-  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
-  gap:7px !important;
+  grid-template-columns:86px minmax(0,1fr) !important;
+  gap:5px !important;
   width:100% !important;
-  margin:0 0 10px !important;
+  align-items:start !important;
 }
 
 #screenGame .stat-box{
   width:100% !important;
   min-width:0 !important;
-  padding:8px 4px !important;
+  padding:5px 3px !important;
   box-sizing:border-box !important;
-  border-radius:9px !important;
+  border-radius:7px !important;
 }
 
 #screenGame .stat-box .lbl{
-  font-size:9px !important;
-  margin-bottom:3px !important;
+  font-size:8px !important;
+  margin-bottom:2px !important;
   white-space:nowrap !important;
 }
 
 #screenGame .stat-box .val{
-  font-size:14px !important;
-  line-height:1.15 !important;
+  font-size:12px !important;
+  line-height:1.1 !important;
 }
 
-/* CURRENT BALL */
+/* CURRENT BALL — SMALL, TOP RIGHT */
 #screenGame .current-called-wrap{
-  width:100% !important;
+  position:absolute !important;
+  top:6px !important;
+  right:7px !important;
+  width:auto !important;
   display:flex !important;
-  flex-direction:column !important;
+  flex-direction:row !important;
   align-items:center !important;
-  justify-content:center !important;
-  margin:4px 0 9px !important;
+  gap:4px !important;
+  margin:0 !important;
+  z-index:5 !important;
 }
 
 #screenGame .current-called-title{
-  margin:0 0 5px !important;
-  font-size:10px !important;
+  display:none !important;
 }
 
 #screenGame .ball-circle{
-  width:64px !important;
-  height:64px !important;
+  width:42px !important;
+  height:42px !important;
+  flex-shrink:0 !important;
 }
 
 #screenGame .ball-number{
-  font-size:25px !important;
+  font-size:17px !important;
 }
 
 #screenGame .ball-letter{
-  font-size:10px !important;
+  font-size:7px !important;
 }
 
 /* CLAIM BAR */
 #screenGame .claim-bar-wrap{
-  height:5px !important;
-  margin:5px 0 9px !important;
+  height:3px !important;
+  margin:3px 0 5px !important;
 }
 
 /* TRACKER + CARDS */
 #screenGame .game-board-layout{
   display:grid !important;
   grid-template-columns:86px minmax(0,1fr) !important;
-  gap:8px !important;
+  gap:5px !important;
   width:100% !important;
-  align-items:start !important;
+  align-items:stretch !important;
 }
 
+/* TRACKER */
 #screenGame .tracker-wrap{
   width:86px !important;
   min-width:86px !important;
+  height:auto !important;
+  min-height:0 !important;
   margin:0 !important;
   padding:6px !important;
   box-sizing:border-box !important;
   border-radius:9px !important;
+  display:flex !important;
+  flex-direction:column !important;
 }
 
 #screenGame .tracker-title{
-  font-size:7px !important;
-  line-height:1.1 !important;
-  margin-bottom:5px !important;
+  font-size:6px !important;
+  line-height:1 !important;
+  margin-bottom:3px !important;
 }
 
 #screenGame .tracker-grid{
+  flex:1 !important;
+  min-height:0 !important;
   display:grid !important;
   grid-template-columns:repeat(5,minmax(0,1fr)) !important;
   grid-template-rows:repeat(15,minmax(0,1fr)) !important;
@@ -2467,14 +2479,15 @@ loadPaymentInfo();
 #screenGame .t-ball{
   width:100% !important;
   min-width:0 !important;
-  height:20px !important;
-  padding:2px 0 !important;
+  height:auto !important;
+  min-height:0 !important;
+  padding:1px 0 !important;
   display:flex !important;
   align-items:center !important;
   justify-content:center !important;
-  font-size:8px !important;
+  font-size:6px !important;
   line-height:1 !important;
-  border-radius:3px !important;
+  border-radius:2px !important;
 }
 
 /* CARDS */
@@ -2494,10 +2507,10 @@ loadPaymentInfo();
 #screenGame #cardsWrap .card-container{
   display:block !important;
   width:100% !important;
-  margin:0 0 9px !important;
-  padding:8px !important;
+  margin:0 0 4px !important;
+  padding:4px !important;
   box-sizing:border-box !important;
-  border-radius:12px !important;
+  border-radius:7px !important;
 }
 
 #screenGame #cardsWrap .card-container:last-child{
@@ -2505,9 +2518,10 @@ loadPaymentInfo();
 }
 
 #screenGame .card-id-tag{
-  font-size:9px !important;
-  margin-bottom:5px !important;
-  padding-left:2px !important;
+  font-size:7px !important;
+  line-height:1 !important;
+  margin-bottom:2px !important;
+  padding-left:1px !important;
 }
 
 /* BINGO HEADER */
@@ -2515,89 +2529,99 @@ loadPaymentInfo();
   display:grid !important;
   grid-template-columns:repeat(5,minmax(0,1fr)) !important;
   width:100% !important;
-  margin-bottom:4px !important;
-  border-radius:6px !important;
+  margin-bottom:2px !important;
+  border-radius:4px !important;
   overflow:hidden !important;
 }
 
 #screenGame .bingo-col-head{
-  height:28px !important;
+  height:18px !important;
   min-width:0 !important;
-  font-size:13px !important;
+  font-size:9px !important;
 }
 
 /* BINGO GRID */
 #screenGame .bingo-body{
   display:grid !important;
   grid-template-columns:repeat(5,minmax(0,1fr)) !important;
-  gap:3px !important;
+  gap:1px !important;
   width:100% !important;
 }
 
 #screenGame .bingo-cell{
   width:100% !important;
   min-width:0 !important;
-  height:38px !important;
-  font-size:13px !important;
-  border-radius:4px !important;
+  height:25px !important;
+  font-size:9px !important;
+  border-radius:2px !important;
 }
 
 /* BINGO BUTTON */
 #screenGame .bingo-btn{
   width:100% !important;
-  min-height:40px !important;
-  margin-top:8px !important;
-  padding:10px !important;
-  border-radius:9px !important;
-  font-size:14px !important;
+  min-height:24px !important;
+  height:24px !important;
+  margin-top:3px !important;
+  padding:2px !important;
+  border-radius:5px !important;
+  font-size:9px !important;
 }
 
-/* SECOND CARD MUST BE BELOW FIRST */
+/* SECOND CARD */
 #screenGame #cardContainer2{
   width:100% !important;
-  margin-top:9px !important;
+  margin-top:4px !important;
 }
 
 /* SMALL PHONES */
 @media(max-width:380px){
 
   #screenGame{
-    padding:8px !important;
+    padding:4px !important;
   }
 
   #screenGame .game-board-layout{
     grid-template-columns:76px minmax(0,1fr) !important;
-    gap:6px !important;
+    gap:4px !important;
   }
 
   #screenGame .tracker-wrap{
-    width:76px !important;
-    min-width:76px !important;
-    padding:5px !important;
-  }
+  width:76px !important;
+  min-width:76px !important;
+  height:auto !important;
+  min-height:0 !important;
+  padding:5px !important;
+}
 
-  #screenGame .t-ball{
-    height:18px !important;
-    font-size:7px !important;
-  }
+#screenGame .t-ball{
+  height:auto !important;
+  min-height:0 !important;
+  font-size:7px !important;
+}
 
   #screenGame .bingo-col-head{
-    height:25px !important;
-    font-size:12px !important;
+    height:16px !important;
+    font-size:8px !important;
   }
 
   #screenGame .bingo-cell{
-    height:34px !important;
-    font-size:12px !important;
+    height:22px !important;
+    font-size:8px !important;
   }
 
   #screenGame .ball-circle{
-    width:58px !important;
-    height:58px !important;
+    width:38px !important;
+    height:38px !important;
   }
 
   #screenGame .ball-number{
-    font-size:23px !important;
+    font-size:15px !important;
+  }
+
+  #screenGame .bingo-btn{
+    height:22px !important;
+    min-height:22px !important;
+    font-size:8px !important;
   }
 }
 </style>
