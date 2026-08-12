@@ -1051,7 +1051,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-center" onclick="navGo('screenLobby','navHome')">
     <span style="font-size:24px">👑</span>
   </div>
-  <div class="nav-item" id="navWallet" onclick="goToWallet()">
+  <div class="nav-item" id="navWallet" onclick="document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screenWallet').classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));this.classList.add('active');document.body.classList.remove('in-game');">
     <span class="nav-icon">💰</span><span>WALLET</span>
     <span class="nav-dot" id="walletDot"></span>
   </div>
