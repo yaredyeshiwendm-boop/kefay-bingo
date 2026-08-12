@@ -1099,18 +1099,40 @@ function setBalance(amt){
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
 }
-function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.body.classList.toggle('in-game',id==='screenGame');}
+let walletOpen=false;
+
+function goScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const target=document.getElementById(id);
+  if(!target)return;
+  target.classList.add('active');
+  document.body.classList.toggle('in-game',id==='screenGame');
+}
+
 function navGo(screen, navId){
+  walletOpen=false;
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
   if(screen==='screenAdmin') adminLoadDeposits();
 }
+
 function goToWallet(){
-  goScreen('screenWallet');
+  walletOpen=true;
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+
+  const wallet=document.getElementById('screenWallet');
+  if(!wallet)return;
+
+  wallet.classList.add('active');
+  wallet.style.display='block';
+
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('navWallet')?.classList.add('active');
+
   document.body.classList.remove('in-game');
+
+  window.scrollTo(0,0);
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
