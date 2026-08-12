@@ -247,6 +247,41 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .bingo-cell.marked{background:var(--purple)!important;color:#fff!important}
 .bingo-cell.called-not-marked{background:#fff8dc!important;color:#8b6914!important}
 .bingo-cell.free{background:var(--purple)!important;color:#fff!important;cursor:default}
+/* DISQUALIFIED CARD */
+.card-container.card-disqualified{
+  position:relative;
+  border:2px solid var(--red)!important;
+  opacity:.72;
+}
+
+.card-container.card-disqualified::after{
+  content:'🚫 DISQUALIFIED';
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(80,0,0,.72);
+  color:#ff4444;
+  font-family:'Orbitron',sans-serif;
+  font-size:20px;
+  font-weight:900;
+  letter-spacing:1px;
+  text-shadow:0 0 10px #000;
+  border-radius:16px;
+  z-index:20;
+  pointer-events:none;
+}
+
+.card-container.card-disqualified .bingo-cell{
+  cursor:not-allowed!important;
+}
+
+.card-container.card-disqualified .bingo-btn{
+  pointer-events:none!important;
+  opacity:.4;
+  cursor:not-allowed!important;
+}
 .bingo-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#271447;border:1px solid #3d226b;color:var(--gray);font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;padding:14px;border-radius:12px;cursor:pointer;margin-top:14px;transition:all .2s}
 .bingo-btn.ready{animation:flashPulse .7s infinite alternate;background:var(--green)!important;color:#fff!important;border-color:#fff!important;box-shadow:0 0 22px var(--green)}
 .bingo-btn.locked{background:#1a0a0a!important;color:#666!important;cursor:not-allowed;border-color:#333!important}
@@ -978,6 +1013,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
 let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
+let card1Disqualified=false;
+let card2Disqualified=false;
 let claimWindowOpen=false, claimBarAnim=null, prevLastCalled=null;
 let telegramId=null, isAdmin=false, adminToken='';
 const gameMode = new URLSearchParams(location.search).get('game') || 'normal';
@@ -1218,6 +1255,39 @@ renderBothCards();
 
     case 'numberCalled': onNumberCalled(msg); break;
     case 'claimTooLate': showToast('⏰ Too late! Claim before next number.','warn'); break;
+    case 'cardDisqualified':{
+  const slot=msg.slot===2 ? 2 : 1;
+
+  if(slot===1){
+    card1Disqualified=true;
+  }else{
+    card2Disqualified=true;
+  }
+
+  const container=document.getElementById(
+    slot===2 ? 'cardContainer2' : 'cardContainer1'
+  );
+
+  if(container){
+    container.classList.add('card-disqualified');
+  }
+
+  const btn=document.getElementById(
+    slot===2 ? 'bingoBtn2' : 'bingoBtn'
+  );
+
+  if(btn){
+    btn.classList.remove('ready');
+    btn.classList.add('locked');
+  }
+
+  showToast(
+    msg.message || '🚫 This card is disqualified.',
+    'error'
+  );
+
+  break;
+}
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver': localStorage.removeItem('roomId'); showWinnerOverlay(msg); break;
@@ -1565,6 +1635,15 @@ function claimBingo(slot){
     return;
   }
 
+  if(slot===1 && card1Disqualified){
+  showToast('🚫 Card 1 is disqualified','error');
+  return;
+}
+
+if(slot===2 && card2Disqualified){
+  showToast('🚫 Card 2 is disqualified','error');
+  return;
+}
   const cardId = slot===2 ? myCardId2 : myCardId;
   const indices = slot===2 ? markedIndices2 : markedIndices;
 
@@ -1715,12 +1794,23 @@ function renderBothCards(){
     wrap.classList.remove('dual-cards-wrap');
     c2.style.display='none';
     document.getElementById('cardLabel').innerText=`Card #${myCardId}`;
-    renderCard(myCardNumbers,'cardBody','');
+        renderCard(myCardNumbers,'cardBody','');
   }
+
+  applyDisqualifiedCards();
 }
+
 function toggleCell(i,cell,prefix){
-  if(i===12) return;
   const isCard2=prefix==='b2_';
+
+  if(
+    (!isCard2 && card1Disqualified) ||
+    (isCard2 && card2Disqualified)
+  ){
+    return;
+  }
+
+  if(i===12) return;
   const ms=isCard2?markedIndices2:markedIndices;
   if(ms.has(i)){ms.delete(i);cell.classList.remove('marked');}
   else{ms.add(i);cell.classList.add('marked');}
