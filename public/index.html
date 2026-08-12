@@ -1051,7 +1051,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-center" onclick="navGo('screenLobby','navHome')">
     <span style="font-size:24px">👑</span>
   </div>
-  <div class="nav-item" id="navWallet" onclick="goToWallet()">
+  <div class="nav-item" id="navWallet" onclick="alert('WALLET BUTTON CLICKED');goToWallet()">
     <span class="nav-icon">💰</span><span>WALLET</span>
     <span class="nav-dot" id="walletDot"></span>
   </div>
@@ -1118,20 +1118,17 @@ function navGo(screen, navId){
 }
 
 function goToWallet(){
-  walletOpen=true;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
 
   const wallet=document.getElementById('screenWallet');
   if(!wallet)return;
 
   wallet.classList.add('active');
-  wallet.style.display='block';
 
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('navWallet')?.classList.add('active');
 
   document.body.classList.remove('in-game');
-
   window.scrollTo(0,0);
 }
 
