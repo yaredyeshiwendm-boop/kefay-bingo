@@ -532,7 +532,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 
         <div id="cardBody" class="bingo-body"></div>
 
-        <button id="bingoBtn" class="bingo-btn" onclick="claimBingo()">
+        <button id="bingoBtn" class="bingo-btn" onclick="claimBingo(1)">
           🎉 BINGO!
         </button>
       </div>
@@ -554,7 +554,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
         <div id="cardBody2" class="bingo-body"></div>
 
         <button id="bingoBtn2" class="bingo-btn bingo-btn-card2"
-                onclick="claimBingo()">
+                onclick="claimBingo(2)">
           🎉 BINGO!
         </button>
       </div>
@@ -1559,11 +1559,26 @@ function setBingoBtn(state){
     if(state==='locked') btn.classList.add('locked');
   });
 }
-function claimBingo(){
-  if(!claimWindowOpen){showToast('⏰ Window closed — wait for next number','warn');return;}
-  if(!myCardId){showToast('No card selected','error');return;}
-  wsSend({type:'claimBingo',cardId:myCardId,markedIndices:Array.from(markedIndices),
-    cardId2:myCardId2||null,markedIndices2:myCardId2?Array.from(markedIndices2):null});
+function claimBingo(slot){
+  if(!claimWindowOpen){
+    showToast('⏰ Window closed — wait for next number','warn');
+    return;
+  }
+
+  const cardId = slot===2 ? myCardId2 : myCardId;
+  const indices = slot===2 ? markedIndices2 : markedIndices;
+
+  if(!cardId){
+    showToast('No card selected','error');
+    return;
+  }
+
+  wsSend({
+    type:'claimBingo',
+    cardId,
+    slot,
+    markedIndices:Array.from(indices)
+  });
 }
 
 // ─── WINNER OVERLAY ───────────────────────────────────────────
@@ -1855,14 +1870,31 @@ function pickCard(cardId){
 }
 function deselectCard(slot){
   if(slot===1){
-    if(myCardId) wsSend({type:'deselectCard',cardId:myCardId,slot:1});
-    myCardId=null; myCardNumbers=[];
-    myCardId2=null; myCardNumbers2=[];  // clear second too since server clears both
-  } else {
-    if(myCardId2) wsSend({type:'deselectCard',cardId:myCardId2,slot:2});
-    myCardId2=null; myCardNumbers2=[];
+    if(myCardId){
+      wsSend({
+        type:'deselectCard',
+        cardId:myCardId,
+        slot:1
+      });
+    }
+
+    myCardId=null;
+    myCardNumbers=[];
+  }else{
+    if(myCardId2){
+      wsSend({
+        type:'deselectCard',
+        cardId:myCardId2,
+        slot:2
+      });
+    }
+
+    myCardId2=null;
+    myCardNumbers2=[];
   }
-  updateSlotUI(); renderCardPool(cardPool);
+
+  updateSlotUI();
+  renderCardPool(cardPool);
 }
 document.getElementById('cardSearch').addEventListener('input',()=>{
   const val=parseInt(document.getElementById('cardSearch').value)||0;

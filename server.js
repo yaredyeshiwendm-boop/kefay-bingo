@@ -793,50 +793,73 @@ function callNumber(room){
 
 function evaluateClaims(room){
   room.claimEvalTimer=null;
-  const winners=[], cheaters=[];
+
+  const winners=[];
+
   room.claimedThisRound.forEach(claim=>{
     const p=room.players.find(p=>p.playerId===claim.playerId);
-    if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
-    // Check card 1
-    const card1=p.cardId?getCard(p.cardId,room.gameType):null;
-    const win1=card1&&checkWin(card1.numbers,room.calledNumbers,claim.markedIndices);
-    // Check card 2
-    const card2=p.cardId2?getCard(p.cardId2,room.gameType):null;
-    const win2=card2&&checkWin(card2.numbers,room.calledNumbers,claim.markedIndices2);
 
-    if(win1||win2){
-      // Save the exact winning card(s) and marked cells for the winner screen.
-      p.winningCards=[];
+    if(!p) return;
 
-      if(win1 && card1){
-        p.winningCards.push({
-          cardId: p.cardId,
-          numbers: card1.numbers,
-          markedIndices: Array.from(new Set([...(claim.markedIndices||[]),12]))
-        });
-      }
+    // Only the card that actually pressed BINGO is checked.
+    const slot=claim.slot===2 ? 2 : 1;
 
-      if(win2 && card2){
-        p.winningCards.push({
-          cardId: p.cardId2,
-          numbers: card2.numbers,
-          markedIndices: Array.from(new Set([...(claim.markedIndices2||[]),12]))
-        });
-      }
+    const cardId=slot===2 ? p.cardId2 : p.cardId;
+
+    if(!cardId) return;
+
+    const card=getCard(cardId,room.gameType);
+
+    if(!card) return;
+
+    const win=checkWin(
+      card.numbers,
+      room.calledNumbers,
+      claim.markedIndices||[]
+    );
+
+    if(win){
+
+      p.winningCards=[{
+        cardId,
+        numbers:card.numbers,
+        markedIndices:Array.from(
+          new Set([
+            ...(claim.markedIndices||[]),
+            12
+          ])
+        )
+      }];
 
       winners.push(p);
-    } else cheaters.push(p);
+
+    }else{
+
+      // Only the card that made the false BINGO is disqualified.
+      // The player's other card continues playing.
+      if(slot===1){
+        p.card1Disqualified=true;
+      }else{
+        p.card2Disqualified=true;
+      }
+
+      send(p.ws,{
+        type:'cardDisqualified',
+        slot,
+        cardId,
+        message:`🚫 False BINGO on Card #${cardId}. This card is disqualified, but your other card can continue.`
+      });
+    }
   });
 
-  cheaters.forEach(p=>{
-    p.disqualified=true;
-    send(p.ws,{type:'disqualified',message:'🚫 False BINGO claim — you are disqualified!'});
-  });
+  room.claimedThisRound=[];
+  room.claimWindowOpen=false;
 
-  room.claimedThisRound=[]; room.claimWindowOpen=false;
-
-  if(winners.length>0) endGame(room,winners,null,false);
-  else scheduleNextCall(room);
+  if(winners.length>0){
+    endGame(room,winners,null,false);
+  }else{
+    scheduleNextCall(room);
+  }
 }
 
 async function endGame(room, winners, customMsg, noWinner){
@@ -1395,178 +1418,165 @@ case 'selectCard':{
           break;
         }
         case 'deselectCard':{
-            if(!client.roomId) break;
+          if(!client.roomId) break;
 
-            const room=rooms[client.roomId];
+          const room=rooms[client.roomId];
 
-            if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
+          if(!room||(room.status!=='waiting'&&room.status!=='countdown')) break;
 
-            const p=room.players.find(p=>p.playerId===client.playerId);
+          const p=room.players.find(p=>p.playerId===client.playerId);
+          if(!p) break;
 
-            if(!p) break;
-
-            // ── Super Bingo: release DB reservation ──
-            const releaseSuper = async (cardId)=>{
-              if(
-                room.gameType==='super' &&
-                db &&
-                client.telegramId &&
-                cardId
-              ){
-                try{
-                  await db.releaseSuperBoard(
-                    client.telegramId,
-                    cardId
-                  );
-                }catch(e){
-                  console.error(
-                    'Super board release error:',
-                    e.message
-                  );
-                }
-              }
-            };
-
-            // ── Remove Card 2 ──
-            if(msg.slot===2 && p.cardId2){
-
-              const releasedId=p.cardId2;
-
-              await releaseSuper(releasedId);
-
-              room.takenCardIds.delete(releasedId);
-              p.cardId2=null;
-
-              // Refund second card stake
-              client.balance+=room.stake;
-
-              await saveBalance(
-                client.telegramId,
-                client.balance
-              );
-
-              if(db&&client.telegramId){
-                try{
-                  await db.logTx(
-                    client.telegramId,
-                    'stake_refund',
-                    room.stake,
-                    client.balance,
-                    room.roomId
-                  );
-                }catch(e){}
-              }
-
-              send(ws,{
-                type:'balanceUpdate',
-                balance:client.balance
-              });
-
-              broadcastCardDiff(
-                room,
-                [releasedId]
-              );
-
-              break;
-
-            // ── Remove Card 1 ──
-            }else if(msg.slot===1 && p.cardId){
-
-              const releasedIds=[p.cardId];
-
-              await releaseSuper(p.cardId);
-
-              room.takenCardIds.delete(p.cardId);
-              p.cardId=null;
-
-              // If Card 2 exists, release it too
-              if(p.cardId2){
-
-                releasedIds.push(p.cardId2);
-
-                await releaseSuper(p.cardId2);
-
-                room.takenCardIds.delete(p.cardId2);
-                p.cardId2=null;
-
-                client.balance+=room.stake;
-
-                await saveBalance(
+          // ── Super Bingo: release DB reservation ──
+          const releaseSuper = async (cardId)=>{
+            if(
+              room.gameType==='super' &&
+              db &&
+              client.telegramId &&
+              cardId
+            ){
+              try{
+                await db.releaseSuperBoard(
                   client.telegramId,
-                  client.balance
+                  cardId
                 );
-
-                if(db&&client.telegramId){
-                  try{
-                    await db.logTx(
-                      client.telegramId,
-                      'stake_refund',
-                      room.stake,
-                      client.balance,
-                      room.roomId
-                    );
-                  }catch(e){}
-                }
-
-                send(ws,{
-                  type:'balanceUpdate',
-                  balance:client.balance
-                });
+              }catch(e){
+                console.error(
+                  'Super board release error:',
+                  e.message
+                );
               }
-
-              // Refund Card 1 stake
-              client.balance+=room.stake;
-              p.hasPaid=false;
-
-              await saveBalance(
-                client.telegramId,
-                client.balance
-              );
-
-              if(db&&client.telegramId){
-                try{
-                  await db.logTx(
-                    client.telegramId,
-                    'stake_refund',
-                    room.stake,
-                    client.balance,
-                    room.roomId
-                  );
-                }catch(e){}
-              }
-
-              send(ws,{
-                type:'balanceUpdate',
-                balance:client.balance
-              });
-
-              broadcastCardDiff(
-                room,
-                releasedIds
-              );
-
-              break;
             }
+          };
+
+          // ── Remove Card 2 ONLY ──
+          if(msg.slot===2 && p.cardId2){
+
+            const releasedId=p.cardId2;
+
+            await releaseSuper(releasedId);
+
+            room.takenCardIds.delete(releasedId);
+            p.cardId2=null;
+
+            // Refund Card 2 stake ONLY
+            client.balance+=room.stake;
+
+            await saveBalance(
+              client.telegramId,
+              client.balance
+            );
+
+            if(db&&client.telegramId){
+              try{
+                await db.logTx(
+                  client.telegramId,
+                  'stake_refund',
+                  room.stake,
+                  client.balance,
+                  room.roomId
+                );
+              }catch(e){}
+            }
+
+            send(ws,{
+              type:'balanceUpdate',
+              balance:client.balance
+            });
+
+            broadcastCardDiff(
+              room,
+              [releasedId]
+            );
 
             break;
           }
+
+          // ── Remove Card 1 ONLY ──
+          if(msg.slot===1 && p.cardId){
+
+            const releasedId=p.cardId;
+
+            await releaseSuper(releasedId);
+
+            room.takenCardIds.delete(releasedId);
+            p.cardId=null;
+
+            // Refund Card 1 stake ONLY
+            client.balance+=room.stake;
+            p.hasPaid=false;
+
+            await saveBalance(
+              client.telegramId,
+              client.balance
+            );
+
+            if(db&&client.telegramId){
+              try{
+                await db.logTx(
+                  client.telegramId,
+                  'stake_refund',
+                  room.stake,
+                  client.balance,
+                  room.roomId
+                );
+              }catch(e){}
+            }
+
+            send(ws,{
+              type:'balanceUpdate',
+              balance:client.balance
+            });
+
+            broadcastCardDiff(
+              room,
+              [releasedId]
+            );
+
+            break;
+          }
+
+          break;
+        }
+
         case 'claimBingo':{
           if(!client.roomId) return;
           const room=rooms[client.roomId];
           if(!room||room.status!=='playing') return;
+
           const p=room.players.find(p=>p.playerId===client.playerId);
-          if(!p||p.disqualified||(!p.cardId&&!p.cardId2)) return;
-          if(!room.claimWindowOpen) return send(ws,{type:'claimTooLate',message:'Too late!'});
-          if(!room.claimedThisRound.find(c=>c.playerId===client.playerId))
+          if(!p||(!p.cardId&&!p.cardId2)) return;
+
+          if(!room.claimWindowOpen)
+            return send(ws,{type:'claimTooLate',message:'Too late!'});
+
+          const slot=msg.slot===2 ? 2 : 1;
+          const cardId=slot===2 ? p.cardId2 : p.cardId;
+
+          if(!cardId) return;
+
+          if(slot===1 && p.card1Disqualified) return;
+          if(slot===2 && p.card2Disqualified) return;
+
+          if(!room.claimedThisRound.find(
+            c=>c.playerId===client.playerId && c.slot===slot
+          )){
             room.claimedThisRound.push({
               playerId:client.playerId,
-              markedIndices:msg.markedIndices||[],
-              cardId2:msg.cardId2||null,
-              markedIndices2:msg.markedIndices2||[]
+              slot,
+              cardId,
+              markedIndices:msg.markedIndices||[]
             });
+          }
+
           if(room.callTimer) clearTimeout(room.callTimer);
           if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-          room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
+
+          room.claimEvalTimer=setTimeout(
+            ()=>evaluateClaims(room),
+            CLAIM_COLLECT_MS
+          );
+
           break;
         }
         case 'leaveRoom':
