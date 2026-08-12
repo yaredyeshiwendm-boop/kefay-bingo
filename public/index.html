@@ -2370,67 +2370,70 @@ loadPaymentInfo();
   position:relative !important;
 }
 
-/* TOP STATS */
-#screenGame .game-board-layout{
+/* TOP — DERASH / BALLS / PLAYERS */
+#screenGame .game-stats-row{
   display:grid !important;
-  grid-template-columns:86px minmax(0,1fr) !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
   gap:5px !important;
   width:100% !important;
-  align-items:start !important;
+  margin:0 0 5px !important;
 }
 
 #screenGame .stat-box{
-  width:100% !important;
   min-width:0 !important;
-  padding:5px 3px !important;
+  width:100% !important;
+  padding:5px 4px !important;
   box-sizing:border-box !important;
   border-radius:7px !important;
 }
 
 #screenGame .stat-box .lbl{
   font-size:8px !important;
-  margin-bottom:2px !important;
+  line-height:1 !important;
+  margin-bottom:3px !important;
   white-space:nowrap !important;
 }
 
 #screenGame .stat-box .val{
-  font-size:12px !important;
+  font-size:13px !important;
   line-height:1.1 !important;
 }
 
-/* CURRENT BALL — SMALL, TOP RIGHT */
+/* CURRENT CALLED BALL */
 #screenGame .current-called-wrap{
   position:absolute !important;
-  top:6px !important;
+  top:64px !important;
   right:7px !important;
-  width:auto !important;
-  display:flex !important;
-  flex-direction:row !important;
-  align-items:center !important;
-  gap:4px !important;
+  width:74px !important;
+  height:74px !important;
   margin:0 !important;
-  z-index:5 !important;
+  padding:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  z-index:20 !important;
 }
 
 #screenGame .current-called-title{
-  display:block !important;
-  font-size:6px !important;
-  line-height:1 !important;
-  margin:0 !important;
+  display:none !important;
 }
 
 #screenGame .ball-circle{
-  width:42px !important;
-  height:42px !important;
+  width:68px !important;
+  height:68px !important;
   flex-shrink:0 !important;
-}
-
-#screenGame .ball-number{
-  font-size:17px !important;
+  border:4px solid #fff !important;
+  box-sizing:border-box !important;
 }
 
 #screenGame .ball-letter{
-  font-size:7px !important;
+  font-size:11px !important;
+  line-height:1 !important;
+}
+
+#screenGame .ball-number{
+  font-size:25px !important;
+  line-height:1 !important;
 }
 
 /* CLAIM BAR */
@@ -2442,20 +2445,20 @@ loadPaymentInfo();
 /* TRACKER + CARDS */
 #screenGame .game-board-layout{
   display:grid !important;
-  grid-template-columns:86px minmax(0,1fr) !important;
+  grid-template-columns:minmax(105px,40%) minmax(0,60%) !important;
   gap:5px !important;
   width:100% !important;
-  align-items:stretch !important;
+  align-items:start !important;
 }
 
 /* TRACKER */
 #screenGame .tracker-wrap{
-  width:86px !important;
-  min-width:86px !important;
-  height:auto !important;
+  width:100% !important;
+  min-width:0 !important;
+  height:calc(100dvh - 88px) !important;
   min-height:0 !important;
   margin:0 !important;
-  padding:6px !important;
+  padding:5px !important;
   box-sizing:border-box !important;
   border-radius:9px !important;
   display:flex !important;
@@ -2463,9 +2466,10 @@ loadPaymentInfo();
 }
 
 #screenGame .tracker-title{
-  font-size:6px !important;
+  font-size:8px !important;
   line-height:1 !important;
-  margin-bottom:3px !important;
+  margin-bottom:4px !important;
+  text-align:center !important;
 }
 
 #screenGame .tracker-grid{
@@ -2488,18 +2492,21 @@ loadPaymentInfo();
   display:flex !important;
   align-items:center !important;
   justify-content:center !important;
-  font-size:6px !important;
+  font-size:9px !important;
   line-height:1 !important;
   border-radius:2px !important;
 }
 
-/* CARDS */
+/* CARDS AREA */
 #screenGame .cards-area{
   width:100% !important;
   min-width:0 !important;
   margin:0 !important;
+  padding-top:70px !important;
+  box-sizing:border-box !important;
 }
 
+/* TWO BINGO CARDS */
 #screenGame #cardsWrap,
 #screenGame #cardsWrap.dual-cards-wrap{
   display:block !important;
@@ -2510,10 +2517,10 @@ loadPaymentInfo();
 #screenGame #cardsWrap .card-container{
   display:block !important;
   width:100% !important;
-  margin:0 0 4px !important;
-  padding:4px !important;
+  margin:0 0 6px !important;
+  padding:5px !important;
   box-sizing:border-box !important;
-  border-radius:7px !important;
+  border-radius:10px !important;
 }
 
 #screenGame #cardsWrap .card-container:last-child{
@@ -2521,10 +2528,10 @@ loadPaymentInfo();
 }
 
 #screenGame .card-id-tag{
-  font-size:7px !important;
+  font-size:8px !important;
   line-height:1 !important;
-  margin-bottom:2px !important;
-  padding-left:1px !important;
+  margin-bottom:3px !important;
+  padding-left:2px !important;
 }
 
 /* BINGO HEADER */
@@ -2532,48 +2539,48 @@ loadPaymentInfo();
   display:grid !important;
   grid-template-columns:repeat(5,minmax(0,1fr)) !important;
   width:100% !important;
-  margin-bottom:2px !important;
-  border-radius:4px !important;
+  margin-bottom:3px !important;
+  border-radius:5px !important;
   overflow:hidden !important;
 }
 
 #screenGame .bingo-col-head{
-  height:18px !important;
+  height:24px !important;
   min-width:0 !important;
-  font-size:9px !important;
+  font-size:11px !important;
 }
 
 /* BINGO GRID */
 #screenGame .bingo-body{
   display:grid !important;
   grid-template-columns:repeat(5,minmax(0,1fr)) !important;
-  gap:1px !important;
+  gap:2px !important;
   width:100% !important;
 }
 
 #screenGame .bingo-cell{
   width:100% !important;
   min-width:0 !important;
-  height:25px !important;
-  font-size:9px !important;
-  border-radius:2px !important;
+  height:34px !important;
+  font-size:12px !important;
+  border-radius:4px !important;
 }
 
 /* BINGO BUTTON */
 #screenGame .bingo-btn{
   width:100% !important;
-  min-height:24px !important;
-  height:24px !important;
-  margin-top:3px !important;
+  min-height:30px !important;
+  height:30px !important;
+  margin-top:4px !important;
   padding:2px !important;
-  border-radius:5px !important;
-  font-size:9px !important;
+  border-radius:6px !important;
+  font-size:11px !important;
 }
 
 /* SECOND CARD */
 #screenGame #cardContainer2{
   width:100% !important;
-  margin-top:4px !important;
+  margin-top:5px !important;
 }
 
 /* SMALL PHONES */
@@ -2584,47 +2591,63 @@ loadPaymentInfo();
   }
 
   #screenGame .game-board-layout{
-    grid-template-columns:76px minmax(0,1fr) !important;
+    grid-template-columns:minmax(92px,39%) minmax(0,61%) !important;
     gap:4px !important;
   }
 
-  #screenGame .tracker-wrap{
-  width:76px !important;
-  min-width:76px !important;
-  height:auto !important;
-  min-height:0 !important;
-  padding:5px !important;
-}
-
-#screenGame .t-ball{
-  height:auto !important;
-  min-height:0 !important;
-  font-size:7px !important;
-}
-
-  #screenGame .bingo-col-head{
-    height:16px !important;
-    font-size:8px !important;
-  }
-
-  #screenGame .bingo-cell{
-    height:22px !important;
-    font-size:8px !important;
+  #screenGame .current-called-wrap{
+    top:60px !important;
+    right:5px !important;
+    width:62px !important;
+    height:62px !important;
   }
 
   #screenGame .ball-circle{
-    width:38px !important;
-    height:38px !important;
+    width:58px !important;
+    height:58px !important;
+    border-width:3px !important;
   }
 
   #screenGame .ball-number{
-    font-size:15px !important;
+    font-size:21px !important;
+  }
+
+  #screenGame .ball-letter{
+    font-size:9px !important;
+  }
+
+  #screenGame .cards-area{
+    padding-top:60px !important;
+  }
+
+  #screenGame .tracker-wrap{
+    height:calc(100dvh - 84px) !important;
+    padding:4px !important;
+  }
+
+  #screenGame .t-ball{
+    font-size:8px !important;
+  }
+
+  #screenGame .tracker-title{
+    font-size:7px !important;
+  }
+
+  #screenGame .bingo-col-head{
+    height:20px !important;
+    font-size:9px !important;
+  }
+
+  #screenGame .bingo-cell{
+    height:28px !important;
+    font-size:10px !important;
   }
 
   #screenGame .bingo-btn{
-    height:22px !important;
-    min-height:22px !important;
-    font-size:8px !important;
+    height:25px !important;
+    min-height:25px !important;
+    font-size:9px !important;
   }
 }
+
 </style>
