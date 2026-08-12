@@ -479,6 +479,11 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div id="ballSub" class="val">0/75</div>
     </div>
 
+    <div class="stat-box sound-stat">
+      <button class="sound-btn game-sound-btn" id="soundBtn"
+              onclick="toggleSound()" title="Toggle sound">🔊</button>
+    </div>
+
     <div class="stat-box">
       <div class="lbl">Players</div>
       <div id="playerCountVal" class="val">0</div>
@@ -999,7 +1004,7 @@ function setBalance(amt){
   document.getElementById('balanceEl').innerText=f;
   document.getElementById('walletBalAmt').innerText=f;
 }
-function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
+function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.body.classList.toggle('in-game',id==='screenGame');}
 function navGo(screen, navId){
   goScreen(screen);
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -2647,6 +2652,104 @@ loadPaymentInfo();
     height:25px !important;
     min-height:25px !important;
     font-size:9px !important;
+  }
+}
+
+</style>
+
+<style id="kefay-game-final-layout">
+
+/* Hide navbar while playing */
+body.in-game .navbar{
+  display:none !important;
+}
+
+/* TOP: PRIZE | CALLED | SOUND | PLAYERS */
+#screenGame .game-stats-row{
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:5px !important;
+  width:100% !important;
+  margin:0 0 5px !important;
+  padding:0 !important;
+}
+
+/* Stats */
+#screenGame .stat-box{
+  min-height:30px !important;
+  padding:4px 3px !important;
+}
+
+#screenGame .stat-box .lbl{
+  font-size:8px !important;
+  line-height:1 !important;
+  margin-bottom:2px !important;
+}
+
+#screenGame .stat-box .val{
+  font-size:12px !important;
+  line-height:1.1 !important;
+}
+
+/* SOUND — between Called Numbers and Players */
+#screenGame .sound-stat{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:2px !important;
+}
+
+#screenGame .game-sound-btn{
+  width:30px !important;
+  height:30px !important;
+  min-width:30px !important;
+  min-height:30px !important;
+  padding:0 !important;
+  margin:0 !important;
+  border-radius:50% !important;
+  border:1px solid #6d28d9 !important;
+  background:#2d1b4e !important;
+  color:#fff !important;
+  font-size:16px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+
+/* CURRENT CALLED BALL — keep it in its position */
+#screenGame .current-called-wrap{
+  top:6px !important;
+  right:7px !important;
+}
+
+/* Reduce empty space before cards */
+#screenGame .cards-area{
+  padding-top:0 !important;
+  margin-top:0 !important;
+}
+
+#screenGame .tracker-wrap{
+  margin-top:0 !important;
+}
+
+/* SMALL PHONES */
+@media(max-width:380px){
+
+  #screenGame .game-stats-row{
+    gap:3px !important;
+  }
+
+  #screenGame .game-sound-btn{
+    width:26px !important;
+    height:26px !important;
+    min-width:26px !important;
+    min-height:26px !important;
+    font-size:14px !important;
+  }
+
+  #screenGame .cards-area{
+    padding-top:0 !important;
+    margin-top:0 !important;
   }
 }
 
