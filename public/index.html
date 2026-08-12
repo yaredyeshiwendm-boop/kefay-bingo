@@ -1189,7 +1189,10 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       }
     },2000);
   } else {
-    goScreen('screenLobby');
+    // Keep the current screen if the user has already navigated away from loading.
+    if(document.getElementById('screenLoading').classList.contains('active')){
+      goScreen('screenLobby');
+    }
   }
     break;
 
