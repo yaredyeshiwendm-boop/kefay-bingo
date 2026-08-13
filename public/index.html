@@ -1118,14 +1118,11 @@ function navGo(screen, navId){
 }
 
 function goToWallet(){
-  alert('WALLET BUTTON CLICKED');
-
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
 
   const wallet=document.getElementById('screenWallet');
 
   if(!wallet){
-    alert('WALLET ELEMENT NOT FOUND');
     return;
   }
 
@@ -1137,7 +1134,6 @@ function goToWallet(){
   document.body.classList.remove('in-game');
   window.scrollTo(0,0);
 
-  alert('WALLET OPEN FUNCTION FINISHED');
 }
 
 // ─── WEBSOCKET ────────────────────────────────────────────────
