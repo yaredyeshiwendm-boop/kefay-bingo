@@ -3011,3 +3011,49 @@ body.in-game .navbar{
 }
 
 </style>
+
+<style id="kefay-card-selection-scroll">
+/* CARD SELECTION — fixed screen, internal card-list scroll */
+#screenCards{
+  height:calc(100dvh - 64px) !important;
+  max-height:calc(100dvh - 64px) !important;
+  overflow:hidden !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+
+/* Keep header, prize, search and selected-card slots visible */
+#screenCards .cd-header,
+#screenCards #cdPrizePot,
+#screenCards .selected-cards-row,
+#screenCards .card-search,
+#screenCards .leave-btn{
+  flex-shrink:0 !important;
+}
+
+/* Card 1 / Card 2 preview */
+#screenCards .selected-cards-row{
+  min-height:52px !important;
+  max-height:82px !important;
+  overflow:hidden !important;
+}
+
+/* Only the card list scrolls */
+#screenCards #poolGrid{
+  flex:1 !important;
+  min-height:0 !important;
+  height:auto !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  -webkit-overflow-scrolling:touch !important;
+  padding:4px !important;
+}
+
+/* Keep Leave Room button visible */
+#screenCards .leave-btn{
+  margin-top:8px !important;
+  margin-bottom:4px !important;
+}
+</style>
