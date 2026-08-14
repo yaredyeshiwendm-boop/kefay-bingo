@@ -1328,6 +1328,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
 });
 renderBothCards();
       document.getElementById('bingoBtn').style.display='flex';
+      navGo('screenGame','navGame');
       break;
 
     case 'spectating':
@@ -1957,6 +1958,12 @@ function renderBothCards(){
         renderCard(myCardNumbers,'cardBody','');
   }
 
+function applyDisqualifiedCards(){
+  const c1=document.getElementById("cardContainer1");
+  const c2=document.getElementById("cardContainer2");
+  if(c1)c1.classList.toggle("card-disqualified",!!card1Disqualified);
+  if(c2)c2.classList.toggle("card-disqualified",!!card2Disqualified);
+}
   applyDisqualifiedCards();
 }
 
