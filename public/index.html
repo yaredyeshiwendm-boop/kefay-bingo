@@ -404,6 +404,26 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 .disq-msg{color:var(--gray);font-size:14px;max-width:260px}
 
 /* BOTTOM NAV */
+.cards-back-row{
+  display:flex;
+  justify-content:flex-start;
+  margin-bottom:8px;
+}
+
+.cards-back-btn{
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.25);
+  color:#fff;
+  border-radius:9px;
+  padding:9px 18px;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.cards-back-btn:active{
+  transform:scale(.97);
+}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:var(--panel);border-top:2px solid #2d174d;display:flex;justify-content:space-around;align-items:center;z-index:200}
 .nav-item{display:flex;flex-direction:column;align-items:center;color:var(--gray);font-size:10px;cursor:pointer;font-weight:600;padding:4px 10px;position:relative}
 .nav-item.active{color:var(--gold)}
@@ -477,6 +497,9 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
 </div>
 
 <div id="screenCards" class="screen">
+  <div class="cards-back-row">
+    <button class="cards-back-btn" onclick="leaveRoom()">← BACK</button>
+  </div>
  <div class="cd-header">
     <h2 class="screen-title" style="margin:0">CHOOSE YOUR CARDS</h2>
     <div class="cd-countdown" id="cdCountdown">Waiting...</div>
@@ -498,6 +521,12 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <input class="card-search" type="number" id="cardSearch" placeholder="Search card # (1–1250)..." min="1" max="1250">
   <div id="poolGrid" class="pool-grid"></div>
   <button class="leave-btn" onclick="leaveRoom()">← Leave Room</button>
+</div>
+<div id="screenHistory" class="screen">
+  <h2 class="screen-title">HISTORY</h2>
+  <div style="text-align:center;color:var(--gray);padding:40px 20px">
+    Game history will be available here soon.
+  </div>
 </div>
 
 <div id="screenGame" class="screen">
@@ -1045,11 +1074,8 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="nav-item active" id="navHome" onclick="navGo('screenLobby','navHome')">
     <span class="nav-icon">🏠</span><span>HOME</span>
   </div>
-  <div class="nav-item" id="navGame" onclick="navGo('screenGame','navGame')">
-    <span class="nav-icon">🟨</span><span>GAME</span>
-  </div>
-  <div class="nav-center" onclick="navGo('screenLobby','navHome')">
-    <span style="font-size:24px">👑</span>
+  <div class="nav-item" id="navHistory" onclick="navGo('screenHistory','navHistory')">
+    <span class="nav-icon">🕘</span><span>HISTORY</span>
   </div>
   <div class="nav-item" id="navWallet" onclick="goToWallet()">
     <span class="nav-icon">💰</span><span>WALLET</span>
@@ -1111,9 +1137,19 @@ function goScreen(id){
 
 function navGo(screen, navId){
   walletOpen=false;
+
+  // HOME keeps the player inside the current room/card selection.
+  // Only "Back / Leave Room" returns to Stake Selection.
+  if(screen==='screenLobby' && myRoomId){
+    screen='screenCards';
+    navId='navHome';
+  }
+
   goScreen(screen);
+
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(navId)?.classList.add('active');
+
   if(screen==='screenAdmin') adminLoadDeposits();
 }
 

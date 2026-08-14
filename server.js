@@ -984,18 +984,44 @@ async function leaveRoom(client){
     if(p.cardId) room.takenCardIds.delete(p.cardId);
     if(p.cardId2) room.takenCardIds.delete(p.cardId2);
 
-    if(p.hasPaid&&(room.status==='waiting'||room.status==='countdown')){
-      client.balance+=room.stake;
-      await saveBalance(
-        client.telegramId,
-        client.balance
-      );
+    if(
+  p.hasPaid &&
+  (room.status==='waiting'||room.status==='countdown')
+){
+  const cardCount =
+    (p.cardId ? 1 : 0) +
+    (p.cardId2 ? 1 : 0);
 
-      send(client.ws,{
-        type:'balanceUpdate',
-        balance:client.balance
-      });
+  const refundAmount = room.stake * cardCount;
+
+  if(refundAmount > 0){
+    client.balance += refundAmount;
+
+    await saveBalance(
+      client.telegramId,
+      client.balance
+    );
+
+    if(db && client.telegramId){
+      try{
+        await db.logTx(
+          client.telegramId,
+          'stake_refund',
+          refundAmount,
+          client.balance,
+          room.roomId
+        );
+      }catch(e){}
     }
+
+    send(client.ws,{
+      type:'balanceUpdate',
+      balance:client.balance
+    });
+  }
+
+  p.hasPaid=false;
+}
   }
   room.players=room.players.filter(p=>p.playerId!==client.playerId);
   client.roomId=null;
