@@ -510,15 +510,17 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <input class="card-search" type="number" id="cardSearch" placeholder="Search card # (1–1250)..." min="1" max="1250">
   <div id="poolGrid" class="pool-grid"></div>
 
-  <!-- Selected card preview — fixed at bottom -->
+  <!-- Selected card previews — fixed at bottom -->
   <div class="selected-cards-row">
     <div class="selected-slot" id="slot1">
-      <div class="slot-label" style="color:var(--purple)">Card 1</div>
+      <div class="slot-label" style="color:var(--purple)">CARD 1</div>
       <div class="slot-num" style="color:var(--purple)" id="slot1Num">—</div>
+      <div class="selection-preview" id="previewCard1"></div>
     </div>
     <div class="selected-slot" id="slot2">
-      <div class="slot-label" style="color:#d97706">Card 2 (optional)</div>
+      <div class="slot-label" style="color:#d97706">CARD 2</div>
       <div class="slot-num" style="color:#d97706" id="slot2Num">—</div>
+      <div class="selection-preview" id="previewCard2"></div>
     </div>
   </div>
 </div>
@@ -1905,6 +1907,39 @@ function renderCard(nums, bodyId, prefix){
     body.appendChild(cell);
   });
 }
+function renderSelectionPreview(nums, containerId, cardId){
+  const el=document.getElementById(containerId);
+  if(!el) return;
+
+  el.innerHTML='';
+  if(!cardId || !Array.isArray(nums) || nums.length!==25){
+    return;
+  }
+
+  const head=['B','I','N','G','O'];
+
+  head.forEach(h=>{
+    const cell=document.createElement('div');
+    cell.className='selection-preview-head';
+    cell.innerText=h;
+    el.appendChild(cell);
+  });
+
+  nums.forEach((n,i)=>{
+    const cell=document.createElement('div');
+    cell.className='selection-preview-cell';
+
+    if(i===12){
+      cell.classList.add('free');
+      cell.innerText='FREE';
+    }else{
+      cell.innerText=n;
+    }
+
+    el.appendChild(cell);
+  });
+}
+
 function renderBothCards(){
   const wrap=document.getElementById('cardsWrap');
   const c2=document.getElementById('cardContainer2');
@@ -1978,10 +2013,25 @@ function refreshCardCells(){
 function updateSlotUI(){
   const s1=document.getElementById('slot1'), s2=document.getElementById('slot2');
   const n1=document.getElementById('slot1Num'), n2=document.getElementById('slot2Num');
-  if(myCardId){s1.classList.add('filled1');n1.innerText=`#${myCardId}`;}
-  else{s1.classList.remove('filled1');n1.innerText='—';}
-  if(myCardId2){s2.classList.add('filled2');n2.innerText=`#${myCardId2}`;}
-  else{s2.classList.remove('filled2');n2.innerText='—';}
+
+  if(myCardId){
+    s1.classList.add('filled1');
+    n1.innerText=`#${myCardId}`;
+  }else{
+    s1.classList.remove('filled1');
+    n1.innerText='—';
+  }
+
+  if(myCardId2){
+    s2.classList.add('filled2');
+    n2.innerText=`#${myCardId2}`;
+  }else{
+    s2.classList.remove('filled2');
+    n2.innerText='—';
+  }
+
+  renderSelectionPreview(myCardNumbers,'previewCard1',myCardId);
+  renderSelectionPreview(myCardNumbers2,'previewCard2',myCardId2);
 }
 function resetSlotUI(){
   myCardId=null; myCardId2=null;
@@ -3060,4 +3110,68 @@ body.in-game .navbar{
   margin-top:8px !important;
   margin-bottom:4px !important;
 }
+
+
+/* ── CARD SELECTION 5x5 PREVIEW ── */
+#screenCards .selected-cards-row{
+  flex-shrink:0 !important;
+  display:flex !important;
+  gap:8px !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow:hidden !important;
+  padding-top:6px !important;
+}
+
+#screenCards .selected-slot{
+  flex:1 !important;
+  min-width:0 !important;
+  padding:5px !important;
+  min-height:0 !important;
+  overflow:hidden !important;
+}
+
+#screenCards .selected-slot .slot-num{
+  display:none !important;
+}
+
+.selection-preview{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:2px;
+  width:100%;
+  margin-top:4px;
+}
+
+.selection-preview-head,
+.selection-preview-cell{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  aspect-ratio:1;
+  min-width:0;
+  border-radius:3px;
+  font-size:9px;
+  font-weight:700;
+  overflow:hidden;
+}
+
+.selection-preview-head{
+  background:var(--purple);
+  color:#fff;
+  font-size:8px;
+}
+
+.selection-preview-cell{
+  background:var(--card);
+  border:1px solid #4a2d7a;
+  color:#fff;
+}
+
+.selection-preview-cell.free{
+  background:rgba(34,197,94,.25);
+  color:var(--green);
+  font-size:7px;
+}
+
 </style>
