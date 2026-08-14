@@ -507,7 +507,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div id="cdPrizePot" style="background:linear-gradient(135deg,rgba(250,204,21,.15),rgba(139,92,246,.15));border:1px solid rgba(250,204,21,.4);border-radius:10px;padding:10px 14px;text-align:center;font-weight:700;color:var(--gold);font-size:14px;margin-bottom:10px">
     🏆 Prize grows as players join
   </div>
-  <!-- Selected card slots -->
+  <input class="card-search" type="number" id="cardSearch" placeholder="Search card # (1–1250)..." min="1" max="1250">
+  <div id="poolGrid" class="pool-grid"></div>
+
+  <!-- Selected card preview — fixed at bottom -->
   <div class="selected-cards-row">
     <div class="selected-slot" id="slot1">
       <div class="slot-label" style="color:var(--purple)">Card 1</div>
@@ -518,9 +521,6 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
       <div class="slot-num" style="color:#d97706" id="slot2Num">—</div>
     </div>
   </div>
-  <input class="card-search" type="number" id="cardSearch" placeholder="Search card # (1–1250)..." min="1" max="1250">
-  <div id="poolGrid" class="pool-grid"></div>
-  <button class="leave-btn" onclick="leaveRoom()">← Leave Room</button>
 </div>
 <div id="screenHistory" class="screen">
   <h2 class="screen-title">HISTORY</h2>
