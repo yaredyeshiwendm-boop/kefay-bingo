@@ -1261,6 +1261,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null; reservedSuperBoards=msg.reservedSuperBoards||[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
       resetSlotUI();
+      document.getElementById('previewCard1').innerHTML=''; document.getElementById('previewCard2').innerHTML='';
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
       if(msg.status==='playing'){
         // Late join — spectating message follows
@@ -1426,6 +1427,7 @@ renderBothCards();
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
       claimWindowOpen=false; hideWinnerOverlay(); if(msg.balance!==undefined)setBalance(msg.balance);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
+      document.getElementById('previewCard1').innerHTML=''; document.getElementById('previewCard2').innerHTML='';
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
