@@ -3019,8 +3019,12 @@ body.in-game .navbar{
   max-height:calc(100dvh - 64px) !important;
   overflow:hidden !important;
   box-sizing:border-box !important;
-  display:flex !important;
+  display:none !important;
   flex-direction:column !important;
+}
+
+#screenCards.active{
+  display:flex !important;
 }
 
 /* Keep header, prize, search and selected-card slots visible */
