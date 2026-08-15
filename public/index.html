@@ -476,6 +476,10 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     <div style="font-size:12px;color:var(--gray)" id="welcomeStatus">Ready to play</div>
   </div>
   <h2 class="screen-title">SELECT STAKE TIER</h2>
+    <div id="superCountdownBox" style="display:none;background:linear-gradient(135deg,rgba(250,204,21,.12),rgba(139,92,246,.12));border:1px solid rgba(250,204,21,.35);border-radius:12px;padding:14px;margin:0 0 14px;text-align:center">
+    <div style="font-size:12px;color:var(--gray);margin-bottom:5px">🔥 SUPER BINGO</div>
+    <div id="superCountdownText" style="font-size:20px;font-weight:800;color:var(--gold)">Loading...</div>
+  </div>
   <div id="stakesGrid" class="stakes-grid">
   <div class="stake-card" onclick="wsSend({type:'joinRoom',stakeId:'st10'})">
     <div class="stake-etb">10 ETB</div>
@@ -1197,6 +1201,8 @@ function connect(){
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
 
 // ─── MESSAGE HANDLER ─────────────────────────────────────────
+let superCountdownTimer=null;
+
 function handle(msg){
   switch(msg.type){
 
@@ -1252,9 +1258,46 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   }
     break;
 
+
     case 'lobbyUpdate':
-      renderStakes(msg.stakes);
-      break;
+  renderStakes(msg.stakes);
+
+  const scBox=document.getElementById('superCountdownBox');
+  const scText=document.getElementById('superCountdownText');
+
+  if(scBox && scText){
+    if(msg.superCountdown){
+  const sc=msg.superCountdown;
+
+  clearInterval(superCountdownTimer);
+
+  let remaining=sc.totalSeconds;
+
+  const updateSuperCountdown=()=>{
+    if(remaining<=0){
+      scText.innerText='🔥 SUPER BINGO IS STARTING!';
+      clearInterval(superCountdownTimer);
+      return;
+    }
+
+    const days=Math.floor(remaining/86400);
+    const hours=Math.floor((remaining%86400)/3600);
+    const minutes=Math.floor((remaining%3600)/60);
+    const seconds=remaining%60;
+
+    scText.innerText=
+      `${days}d ${String(hours).padStart(2,'0')}h ${String(minutes).padStart(2,'0')}m ${String(seconds).padStart(2,'0')}s`;
+
+    remaining--;
+  };
+
+  updateSuperCountdown();
+  superCountdownTimer=setInterval(updateSuperCountdown,1000);
+
+  scBox.style.display='block';
+}
+  }
+  break;
 
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);

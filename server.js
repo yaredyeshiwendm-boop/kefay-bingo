@@ -238,6 +238,15 @@ async reserveSuperBoard(tid, cardId) {
   );
   return r[0] || null;
 },
+async getAllLockedSuperBoards() {
+  return this.q(
+    `SELECT sbr.*, u.telegram_id
+     FROM super_board_reservations sbr
+     JOIN users u ON u.id=sbr.user_id
+     WHERE sbr.status='locked'
+     ORDER BY sbr.card_id`
+  );
+},
 
 async getUserSuperBoards(tid) {
   return this.q(
@@ -376,6 +385,50 @@ function isSuperBingoTime(){
     now.getMinutes() === SUPER_MINUTE
   );
 }
+
+function getNextSuperBingoTime(){
+  const now = new Date();
+  const next = new Date(now);
+
+  next.setSeconds(0,0);
+
+  for(let i=0;i<=7;i++){
+    const day=(now.getDay()+i)%7;
+
+    if(!SUPER_DAY.includes(day)) continue;
+
+    next.setDate(now.getDate()+i);
+    next.setHours(SUPER_HOUR,SUPER_MINUTE,0,0);
+
+    if(next.getTime()>now.getTime()){
+      return next;
+    }
+  }
+
+  return null;
+}
+
+function getSuperCountdown(){
+  const next=getNextSuperBingoTime();
+
+  if(!next) return null;
+
+  const diff=Math.max(
+    0,
+    next.getTime()-Date.now()
+  );
+
+  const totalSeconds=Math.floor(diff/1000);
+
+  return {
+    days:Math.floor(totalSeconds/86400),
+    hours:Math.floor((totalSeconds%86400)/3600),
+    minutes:Math.floor((totalSeconds%3600)/60),
+    seconds:totalSeconds%60,
+    timestamp:next.getTime()
+  };
+}
+
 // ─── FIXED CARDS ─────────────────────────────────────────────
 function seededRandom(seed) {
   let s = seed;
@@ -491,12 +544,17 @@ function broadcastLobby(){
   broadcastLobby._pending=true;
   setTimeout(()=>{
     broadcastLobby._pending=false;
-    const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
+   const superCountdown=getSuperCountdown();
+   const payload=STAKES.map(s=>{const r=Object.values(rooms).find(r=>r.stakeId===s.id);
       if(r) console.log('👥 LOBBY DEBUG',s.id,r.players.map(p=>({id:p.playerId,paid:p.hasPaid,card1:p.cardId,card2:p.cardId2})));
       return{stakeId:s.id,amount:s.amount,maxPlayers:s.maxPlayers,
      playerCount:r?
      r.players.filter(p=>p.hasPaid&&(p.cardId||p.cardId2)).length:0,status:r?r.status:'waiting',countdown:r&&r.status==='countdown'?r.countdownLeft:0};});
-    const payloadStr=JSON.stringify({type:'lobbyUpdate',stakes:payload});
+    const payloadStr=JSON.stringify({
+  type:'lobbyUpdate',
+  stakes:payload,
+  superCountdown
+});
     Object.values(clients).forEach(c=>{if(!c.roomId&&c.ws&&c.ws.readyState===WebSocket.OPEN)c.ws.send(payloadStr);});
   },250);
 }
@@ -513,7 +571,7 @@ function broadcastCardPool(room){
     gameType: room.gameType,
     poolLength: pool.length,
     takenCount: room.takenCardIds.size,
-    players: room.players.length
+    players: room.players.length,
   });
 
   const base = pool.map(c => ({
@@ -552,7 +610,7 @@ function broadcastCardPool(room){
       playerCount:cardCount,
       stakeAmount:room.stake,
       gameType:room.gameType,
-      totalCards:pool.length
+      totalCards:pool.length,
     });
   });
 }
@@ -1084,52 +1142,134 @@ wss.on('connection',(ws)=>{
           if(msg.name&&msg.name.trim()){client.playerName=msg.name.trim().substring(0,20);send(ws,{type:'nameSet',playerName:client.playerName});}
           break;
         }
-      case 'reconnect':{
-        const room=rooms[msg.roomId];
+            case 'reconnect':{
+        let room=rooms[msg.roomId];
+
+        // Super Bingo rooms can survive through DB reservations
+        // even when the player was offline.
+        if(!room && msg.telegramId){
+          room=getOrCreateRoom('super50');
+        }
 
         if(!room||!['waiting','countdown','playing'].includes(room.status)){
           send(ws,{type:'reconnectFailed'});
           break;
         }
 
-        // Try by playerId first, fall back to telegramId for page-reload reconnects
-        let ep=room.players.find(p=>p.playerId===client.playerId);
+        const tid=msg.telegramId?String(msg.telegramId):null;
 
-        if(!ep&&msg.telegramId){
-          const tid=String(msg.telegramId);
-          ep=room.players.find(p=>String(p.telegramId)===tid);
+        // Try by playerId first, then telegramId.
+        let ep=room.players.find(
+          p=>p.playerId===client.playerId
+        );
 
-          if(ep){
-            // Re-link this new ws/client to the existing player slot
-            const oldClient=Object.values(clients).find(
-              c=>c.telegramId===tid&&c.playerId!==client.playerId
+        if(!ep&&tid){
+          ep=room.players.find(
+            p=>String(p.telegramId)===tid
+          );
+        }
+
+        // Restore Super Bingo cards from PostgreSQL when the
+        // Mini App was closed and the in-memory player was lost.
+        if(!ep&&room.gameType==='super'&&tid&&db){
+          try{
+            const rows=await db.getUserSuperBoards(tid);
+
+            if(rows.length){
+              ep={
+                playerId:client.playerId,
+                playerName:client.playerName,
+                telegramId:tid,
+                ws,
+                cardId:Number(rows[0].card_id)||null,
+                cardId2:rows[1]?Number(rows[1].card_id):null,
+                hasPaid:true,
+                disqualified:false
+              };
+
+              room.players.push(ep);
+
+              rows.forEach(r=>{
+                room.takenCardIds.add(Number(r.card_id));
+              });
+
+              console.log(
+                '🔥 SUPER CARDS RESTORED:',
+                tid,
+                rows.map(r=>r.card_id)
+              );
+            }
+          }catch(e){
+            console.error(
+              'Super card restore error:',
+              e.message
             );
-
-            if(oldClient) delete clients[oldClient.playerId];
-
-            ep.playerId=client.playerId;
-            client.telegramId=tid;
           }
         }
 
         if(ep){
-          ep.ws=ws;
-          client.roomId=msg.roomId;
+          const oldClient=tid
+            ? Object.values(clients).find(
+                c=>c.telegramId===tid&&c.playerId!==client.playerId
+              )
+            : null;
 
-          const card=ep.cardId?getCard(ep.cardId,room.gameType):null;
-          const card2=ep.cardId2?getCard(ep.cardId2,room.gameType):null;
+          if(oldClient){
+            delete clients[oldClient.playerId];
+          }
+
+          ep.playerId=client.playerId;
+          ep.ws=ws;
+
+          client.roomId=room.roomId;
+          if(tid) client.telegramId=tid;
+
+          const card=ep.cardId
+            ?getCard(ep.cardId,room.gameType)
+            :null;
+
+          const card2=ep.cardId2
+            ?getCard(ep.cardId2,room.gameType)
+            :null;
+
+          let reservedSuperBoards=[];
+
+          if(room.gameType==='super'&&db&&tid){
+            try{
+              const rows=await db.getUserSuperBoards(tid);
+
+              reservedSuperBoards=rows.map(
+                r=>Number(r.card_id)
+              );
+
+              rows.forEach(r=>{
+                room.takenCardIds.add(
+                  Number(r.card_id)
+                );
+              });
+            }catch(e){
+              console.error(
+                'Super reservation reconnect error:',
+                e.message
+              );
+            }
+          }
 
           send(ws,{
             type:'reconnected',
-            roomId:msg.roomId,
+            roomId:room.roomId,
             stakeId:room.stakeId,
+            status:room.status,
             cardId:ep.cardId,
             cardNumbers:card?card.numbers:[],
             cardId2:ep.cardId2||null,
             cardNumbers2:card2?card2.numbers:[],
             calledNumbers:room.calledNumbers,
             pot:room.pot,
-            playerCount:room.players.filter(p=>p.hasPaid&&(p.cardId||p.cardId2)).length
+            playerCount:room.players.filter(
+              p=>p.hasPaid&&(p.cardId||p.cardId2)
+            ).length,
+            reservedSuperBoards
           });
 
           send(ws,{
@@ -1137,15 +1277,28 @@ wss.on('connection',(ws)=>{
             pool:getRoomCardPool(room).map(c=>({
               id:c.id,
               taken:room.takenCardIds.has(c.id),
-              takenByMe:ep.cardId===c.id||ep.cardId2===c.id
+              takenByMe:
+                ep.cardId===c.id||
+                ep.cardId2===c.id
             })),
+            reservedSuperBoards,
             playerCount:room.players.reduce(
-              (sum,p)=>(p.cardId?1:0)+(p.cardId2?1:0)+sum,0
+              (sum,p)=>
+                (p.cardId?1:0)+
+                (p.cardId2?1:0)+sum,
+              0
             ),
             stakeAmount:room.stake,
             gameType:room.gameType,
             totalCards:getRoomCardPool(room).length
           });
+
+          if(room.status==='countdown'){
+            send(ws,{
+              type:'countdown',
+              seconds:room.countdownLeft
+            });
+          }
         }else{
           send(ws,{type:'reconnectFailed'});
         }
@@ -1195,10 +1348,75 @@ if(sc.type==='super' && db && client.telegramId){
   
           const room=getOrCreateRoom(msg.stakeId);
           if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'Game already running.'});
-          room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,ws,cardId:null,cardId2:null,hasPaid:false,disqualified:false});
+          // ── Restore purchased Super Bingo cards ────────────────
+let restoreCard1=null;
+let restoreCard2=null;
+
+if(sc.type==='super' && reservedSuperBoards.length){
+
+  const validCards=reservedSuperBoards
+    .map(r=>Number(r.card_id))
+    .filter(id=>Number.isInteger(id) && id>=1 && id<=SUPER_TOTAL_CARDS);
+
+  restoreCard1=validCards[0]||null;
+  restoreCard2=validCards[1]||null;
+
+  if(restoreCard1){
+    room.takenCardIds.add(restoreCard1);
+  }
+
+  if(restoreCard2){
+    room.takenCardIds.add(restoreCard2);
+  }
+
+  console.log('🔥 RESTORED SUPER CARDS:', {
+    telegramId:client.telegramId,
+    card1:restoreCard1,
+    card2:restoreCard2
+  });
+}
+         room.players.push({
+  playerId:client.playerId,
+  playerName:client.playerName,
+  telegramId:client.telegramId,
+  ws,
+  cardId:restoreCard1,
+  cardId2:restoreCard2,
+  hasPaid:!!(restoreCard1||restoreCard2),
+  disqualified:false
+});
           client.roomId=room.roomId;
             console.log("🔥 SUPER RESERVED BOARDS:", reservedSuperBoards.map(r=>r.card_id));
-          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:sum)+(p.cardId2?1:0),0),stakeAmount:room.stake,reservedSuperBoards:reservedSuperBoards.map(r=>r.card_id)});
+          send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>(p.cardId?sum+1:0)+(p.cardId2?1:0),0),stakeAmount:room.stake,reservedSuperBoards:reservedSuperBoards.map(r=>r.card_id)});
+// Restore Super Bingo cards to the card-selection preview
+if(room.gameType==='super' && (restoreCard1||restoreCard2)){
+
+  if(restoreCard1){
+    const card=getCard(restoreCard1,room.gameType);
+
+    if(card){
+      send(ws,{
+        type:'cardSelected',
+        cardId:restoreCard1,
+        cardNumbers:card.numbers,
+        slot:1
+      });
+    }
+  }
+
+  if(restoreCard2){
+    const card=getCard(restoreCard2,room.gameType);
+
+    if(card){
+      send(ws,{
+        type:'cardSelected',
+        cardId:restoreCard2,
+        cardNumbers:card.numbers,
+        slot:2
+      });
+    }
+  }
+}
          
   if(room.status==='countdown'){
   send(ws,{
