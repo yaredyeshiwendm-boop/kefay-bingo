@@ -2289,19 +2289,17 @@ Choose Game 👇`,
             [referrerUser.id, String(tid)]
           );
 
-          // 🎁 Give referrer 10 ETB immediately
-          await db.q(
-            `UPDATE users
-             SET balance = balance + 10,
-                 referral_bonus = referral_bonus + 10,
-                 referral_count = referral_count + 1
-             WHERE id=$1`,
-            [referrerUser.id]
-          );
+           // 📊 Count referral only — no immediate bonus
+await db.q(
+  `UPDATE users
+   SET referral_count = referral_count + 1
+   WHERE id=$1`,
+  [referrerUser.id]
+);
 
-          console.log(
-            `🎁 Referral bonus: ${referrerUser.telegram_id} earned 10 ETB from ${tid}`
-          );
+console.log(
+  `👥 Referral counted: ${referrerUser.telegram_id} invited ${tid}`
+);
         }
       }
     } else {

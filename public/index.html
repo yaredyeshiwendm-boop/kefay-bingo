@@ -638,9 +638,16 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <h2 class="screen-title">💰 MY WALLET</h2>
 
   <div class="wallet-balance-card">
-    <div class="wallet-bal-label">Available Balance</div>
-    <div class="wallet-bal-amount" id="walletBalAmt">ETB 0.00</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <span class="wallet-bal-label">Bon. Bal</span>
+    <strong id="bonusBalAmt">ETB 0.00</strong>
   </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <span class="wallet-bal-label">Win. Bal</span>
+    <strong id="winBalAmt">ETB 0.00</strong>
+  </div>
+</div>
 
   <div class="wallet-tabs">
     <div class="wallet-tab active" onclick="switchWalletTab('deposit')">⬇ Deposit</div>
