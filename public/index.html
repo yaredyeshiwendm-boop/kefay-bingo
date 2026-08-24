@@ -771,15 +771,22 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div id="walletWithdraw" class="wallet-section">
 
     <div style="background:var(--card);border:1px solid #4a2d7a;border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--gray);line-height:1.7">
-      ℹ️ Withdrawals are processed manually. Funds will be sent to your Telebirr number on file.<br>
+      ℹ️ Withdrawals are processed manually. Enter the phone number where you want to receive the withdrawal.<br>
       <strong style="color:#fff">Minimum withdrawal: 100 ETB</strong>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Amount to Withdraw (ETB)</label>
-      <input class="form-input" type="number" id="withdrawAmount"
-             placeholder="Enter amount..." min="100">
-    </div>
+  <label class="form-label">Phone Number to Receive Money</label>
+  <input class="form-input" type="tel" id="withdrawPhone"
+         placeholder="09xxxxxxxx or 07xxxxxxxx"
+         maxlength="15">
+</div>
+
+<div class="form-group">
+  <label class="form-label">Amount to Withdraw (ETB)</label>
+  <input class="form-input" type="number" id="withdrawAmount"
+         placeholder="Enter amount..." min="100">
+</div>
 
     <button class="btn-submit btn-red" onclick="submitWithdrawal()">
       Request Withdrawal
@@ -1541,9 +1548,52 @@ function submitDeposit(){
 }
 function submitWithdrawal(){
   const amount=parseInt(document.getElementById('withdrawAmount').value);
-  if(!amount||amount<100){showWalletMsg('withdrawMsg','Minimum withdrawal is 100 ETB.','error');return;}
-  if(amount>currentBalance){showWalletMsg('withdrawMsg','Insufficient balance.','error');return;}
-  wsSend({type:'withdrawalRequest',amount});
+  const withdrawPhone=document.getElementById('withdrawPhone').value.trim();
+
+  if(!withdrawPhone){
+    showWalletMsg(
+      'withdrawMsg',
+      'Please enter the phone number where you want to receive the money.',
+      'error'
+    );
+    return;
+  }
+
+  const phoneDigits=withdrawPhone.replace(/\D/g,'');
+
+  if(phoneDigits.length<9){
+    showWalletMsg(
+      'withdrawMsg',
+      'Please enter a valid phone number.',
+      'error'
+    );
+    return;
+  }
+
+  if(!amount||amount<100){
+    showWalletMsg(
+      'withdrawMsg',
+      'Minimum withdrawal is 100 ETB.',
+      'error'
+    );
+    return;
+  }
+
+  if(amount>currentBalance){
+    showWalletMsg(
+      'withdrawMsg',
+      'Insufficient balance.',
+      'error'
+    );
+    return;
+  }
+
+  wsSend({
+    type:'withdrawalRequest',
+    amount,
+    withdrawPhone
+  });
+
   showWalletMsg('withdrawMsg','Submitting...','info');
 }
 
@@ -1608,7 +1658,7 @@ async function adminLoadWithdrawals(){
           <div class="req-amount">${w.amount} ETB</div>
         </div>
         <div class="req-meta">
-          📱 ${esc(w.phone||'—')}<br>
+          📱 Receive Money At: ${esc(w.withdraw_phone||'—')}<br>
           🕐 ${new Date(w.created_at).toLocaleString()}
         </div>
         <div class="req-actions">

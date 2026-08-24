@@ -162,16 +162,19 @@ if (process.env.DATABASE_URL) {
       },
 
       // ── Withdrawals ──
-      async createWithdrawal(tid, amount) {
+      async createWithdrawal(tid, amount, withdrawPhone) {
         const u = await this.getUser(tid);
         if (!u || parseFloat(u.balance) < amount) return { error: 'Insufficient balance' };
         const newBal = parseFloat(u.balance) - amount;
         await this.setBalance(tid, newBal);
         await this.logTx(tid, 'withdrawal_pending', -amount, newBal, 'pending');
         const r = await this.q(
-          `INSERT INTO withdrawal_requests(user_id,amount,status)
-           SELECT id,$2,'pending' FROM users WHERE telegram_id=$1 RETURNING id`,
-          [String(tid), amount]
+          `INSERT INTO withdrawal_requests(user_id,amount,withdraw_phone,status)
+ SELECT id,$2,$3,'pending'
+ FROM users
+ WHERE telegram_id=$1
+ RETURNING id`,
+[String(tid), amount, withdrawPhone]
         );
         return { id: r[0]?.id, newBalance: newBal };
       },
@@ -1878,13 +1881,23 @@ case 'selectCard':{
 
         // ── Withdrawal request ──
         case 'withdrawalRequest':{
-          const{amount}=msg;
+          const{amount,withdrawPhone}=msg;
           if(!amount||amount<100) return send(ws,{type:'error',message:'Minimum withdrawal is 100 ETB.'});
           if(client.balance<amount) return send(ws,{type:'error',message:'Insufficient balance.'});
           if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
           if(db){
             try{
-              const result=await db.createWithdrawal(client.telegramId,amount);
+          if(!withdrawPhone){
+  return send(ws,{
+    type:'error',
+    message:'Please enter a withdrawal phone number.'
+  });
+}
+              const result=await db.createWithdrawal(
+  client.telegramId,
+  amount,
+  withdrawPhone
+);
               if(result.error) return send(ws,{type:'error',message:result.error});
           if (adminBot && process.env.ADMIN_TELEGRAM_ID) {
   try {
@@ -1896,7 +1909,7 @@ case 'selectCard':{
         process.env.ADMIN_TELEGRAM_ID,
         `🔔 *NEW WITHDRAWAL REQUEST*\n\n` +
         `👤 Name: *${w.name || 'Unknown'}*\n` +
-        `📱 Phone: ${w.phone || 'N/A'}\n` +
+        `📱 Receive Money At: *${w.withdraw_phone || '—'}*\n` +
         `💵 Amount: *${Number(w.amount).toFixed(2)} ETB*\n\n` +
         `🆔 Request ID: ${w.id}`,
         {
