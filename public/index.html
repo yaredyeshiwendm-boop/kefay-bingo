@@ -1140,10 +1140,16 @@ function numConfig(n){
 }
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
 function setBalance(amt){
-  currentBalance=parseFloat(amt);
+  currentBalance=parseFloat(amt) || 0;
   const f=`ETB ${currentBalance.toFixed(2)}`;
+
   document.getElementById('balanceEl').innerText=f;
-  document.getElementById('walletBalAmt').innerText=f;
+
+  const bonusEl=document.getElementById('bonusBalAmt');
+  const winEl=document.getElementById('winBalAmt');
+
+  if(bonusEl) bonusEl.innerText=f;
+  if(winEl) winEl.innerText='ETB 0.00';
 }
 let walletOpen=false;
 
