@@ -5,7 +5,7 @@ require('dotenv').config();
  * Changes:
  *  - 80% winner / 20% house cut
  *  - Disqualification only notifies the cheater (silent to others)
- *  - Admin page (phone 251934255415 → admin)
+ *  - Admin page (phone 251993043478 → admin)
  *  - Deposit/withdrawal requests with approve/reject
  *  - Full DB integration
  */
@@ -15,6 +15,60 @@ const http      = require('http');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const path      = require('path');
+const crypto    = require('crypto');
+
+function verifyTelegramInitData(initData){
+  try{
+    if(!initData || !process.env.BOT_TOKEN) return null;
+
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+
+    if(!hash) return null;
+
+    const dataCheckString = [...params.entries()]
+      .filter(([key]) => key !== 'hash')
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([key,value]) => `${key}=${value}`)
+      .join('\n');
+
+    const secretKey = crypto
+      .createHmac('sha256', 'WebAppData')
+      .update(process.env.BOT_TOKEN)
+      .digest();
+
+    const calculatedHash = crypto
+      .createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+
+    if(
+      calculatedHash.length !== hash.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(calculatedHash),
+        Buffer.from(hash)
+      )
+    ){
+      return null;
+    }
+
+    const userRaw = params.get('user');
+    if(!userRaw) return null;
+
+    const user = JSON.parse(userRaw);
+
+    if(!user.id) return null;
+
+    return {
+      telegramId: String(user.id),
+      user
+    };
+
+  }catch(e){
+    console.error('Telegram initData verification error:', e.message);
+    return null;
+  }
+}
 
 const app    = express();
 const server = http.createServer(app);
@@ -1130,15 +1184,57 @@ wss.on('connection',(ws)=>{
 
       switch(msg.type){
         case 'telegramAuth':{
-          const tid=String(msg.telegramId);
+          // 🔐 Verify Telegram WebApp identity on the server.
+          const verified = verifyTelegramInitData(msg.initData);
+
+          if(!verified){
+            send(ws,{
+              type:'authError',
+              message:'Invalid Telegram authentication.'
+            });
+            break;
+          }
+
+          const tid = verified.telegramId;
+
+          // Never trust telegramId supplied separately by the client.
+          if(msg.telegramId && String(msg.telegramId)!==tid){
+            send(ws,{
+              type:'authError',
+              message:'Telegram identity mismatch.'
+            });
+            break;
+          }
+
           const user=await loadUser(tid);
+
           if(user){
-            client.telegramId=tid; client.playerName=user.name; client.balance=user.balance; client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-          send(ws,{type:'authSuccess',playerName:user.name,balance:user.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+            client.telegramId=tid;
+            client.playerName=user.name;
+            client.balance=user.balance;
+            client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
+
+            send(ws,{
+              type:'authSuccess',
+              playerName:user.name,
+              balance:user.balance,
+              isRegistered:true,
+              isAdmin:client.isAdmin,
+              adminToken:client.isAdmin?ADMIN_PHONE:undefined
+            });
+
           } else {
             client.telegramId=tid;
-            send(ws,{type:'authSuccess',playerName:'',balance:10,isRegistered:false,isAdmin:false});
+
+            send(ws,{
+              type:'authSuccess',
+              playerName:'',
+              balance:10,
+              isRegistered:false,
+              isAdmin:false
+            });
           }
+
           break;
         }
         case 'setName':{
@@ -2233,7 +2329,7 @@ Choose Game 👇`,
               {
                 text:'🎱 Normal Bingo',
                 web_app:{
-                  url:`${GAME_URL}?tid=${tid}&game=normal`
+                  url:`${GAME_URL}?game=normal`
                 }
               }
             ],
@@ -2241,7 +2337,7 @@ Choose Game 👇`,
               {
                 text:'🔥 Super Bingo',
                 web_app:{
-                  url:`${GAME_URL}?tid=${tid}&game=super`
+                  url:`${GAME_URL}?game=super`
                 }
               }
             ]
@@ -2343,7 +2439,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'🎱 Normal Bingo',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=normal`
+                url:`${GAME_URL}?game=normal`
               }
             }
           ],
@@ -2351,7 +2447,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'🔥 Super Bingo',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=super`
+                url:`${GAME_URL}?game=super`
               }
             }
           ]
@@ -2409,7 +2505,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'🎱 Normal Bingo',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=normal`
+                url:`${GAME_URL}?game=normal`
               }
             }
           ],
@@ -2417,7 +2513,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'🔥 Super Bingo',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=super`
+                url:`${GAME_URL}?game=super`
               }
             }
           ]
@@ -2437,7 +2533,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💰 Tap below to deposit:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'💰 Deposit Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=deposit` }}]]
+          inline_keyboard:[[{ text:'💰 Deposit Now', web_app:{ url:`${GAME_URL}?page=deposit` }}]]
         }
       });
     }
@@ -2446,7 +2542,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💸 Tap below to withdraw:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'💸 Withdraw Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=withdraw` }}]]
+          inline_keyboard:[[{ text:'💸 Withdraw Now', web_app:{ url:`${GAME_URL}?page=withdraw` }}]]
         }
       });
     }

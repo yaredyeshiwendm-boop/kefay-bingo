@@ -1139,9 +1139,16 @@ let cardPool=[]; let reservedSuperBoards=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
 function getTelegramId(){
-  const p=new URLSearchParams(location.search);
-  if(p.get('tid')) return p.get('tid');
-  try{if(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initDataUnsafe){const u=Telegram.WebApp.initDataUnsafe.user;if(u&&u.id)return String(u.id);}}catch(e){}
+  try{
+    if(
+      window.Telegram &&
+      Telegram.WebApp &&
+      Telegram.WebApp.initDataUnsafe &&
+      Telegram.WebApp.initDataUnsafe.user
+    ){
+      return String(Telegram.WebApp.initDataUnsafe.user.id);
+    }
+  }catch(e){}
   return null;
 }
 function numConfig(n){
@@ -1223,7 +1230,8 @@ function connect(){
   if(telegramId){
     wsSend({
       type:'telegramAuth',
-      telegramId:parseInt(telegramId)
+      telegramId:parseInt(telegramId),
+      initData: Telegram.WebApp.initData
     });
   }
 };
@@ -1249,7 +1257,11 @@ if(pageParam === 'deposit') setTimeout(()=>{ navGo('screenWallet','navWallet'); 
 if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet'); switchWalletTab('withdraw'); }, 1500);
       if(telegramId){
         document.getElementById('loadingText').innerText='Loading your account...';
-        wsSend({type:'telegramAuth',telegramId:parseInt(telegramId)});
+        wsSend({
+          type:'telegramAuth',
+          telegramId:parseInt(telegramId),
+          initData: Telegram.WebApp.initData
+        });
       } else {
         goScreen('screenLobby');
       }
