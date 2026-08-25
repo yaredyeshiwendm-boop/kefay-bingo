@@ -561,15 +561,28 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
     </div>
   </div>
 
-  <!-- CURRENT CALLED NUMBER -->
-  <div class="current-called-wrap">
-    <div class="current-called-title">CURRENT CALLED</div>
+  <!-- AUTO MARK + CURRENT CALLED -->
+<div class="current-called-header">
 
-    <div id="ballCircle" class="ball-circle">
-      <span id="ballLetter" class="ball-letter">-</span>
-      <span id="ballNumber" class="ball-number">--</span>
-    </div>
+  <div class="auto-mark-control">
+    <span class="auto-mark-label">⚡ Auto Mark</span>
+    <button id="autoMarkBtn"
+            class="auto-mark-switch"
+            onclick="toggleAutoMark()">
+      OFF
+    </button>
   </div>
+
+  <div class="current-called-title">CURRENT CALLED</div>
+
+</div>
+
+<div class="current-called-wrap">
+  <div id="ballCircle" class="ball-circle">
+    <span id="ballLetter" class="ball-letter">-</span>
+    <span id="ballNumber" class="ball-number">--</span>
+  </div>
+</div>
 
   <div class="claim-bar-wrap">
     <div class="claim-bar" id="claimBar"></div>
@@ -1822,26 +1835,153 @@ async function loadPaymentInfo(){
   }catch(e){/* keep defaults */}
 }
 
+// ─── AUTO MARK ───────────────────────────────────────────────
+let autoMarkEnabled = false;
+
+function toggleAutoMark(){
+  autoMarkEnabled = !autoMarkEnabled;
+
+  const btn = document.getElementById('autoMarkBtn');
+  if(btn){
+    btn.innerText = autoMarkEnabled ? 'ON' : 'OFF';
+    btn.classList.toggle('on', autoMarkEnabled);
+  }
+
+  document.body.classList.toggle('auto-mark-active', autoMarkEnabled);
+
+  updateAutoModeUI();
+}
+
+function updateAutoModeUI(){
+  const buttons = [
+    document.getElementById('bingoBtn'),
+    document.getElementById('bingoBtn2')
+  ];
+
+  buttons.forEach(btn=>{
+    if(!btn) return;
+
+    if(autoMarkEnabled){
+      btn.innerText = '⚡ AUTOMATIC';
+      btn.disabled = true;
+      btn.classList.add('auto-bingo');
+    }else{
+      btn.innerText = '🎉 BINGO!';
+      btn.disabled = false;
+      btn.classList.remove('auto-bingo');
+    }
+  });
+}
+
+function autoMarkNumber(number){
+  if(!autoMarkEnabled) return;
+
+  const markOne = (nums, marked, prefix) => {
+    if(!nums || !nums.length) return;
+
+    const index = nums.indexOf(number);
+
+    if(index === -1 || index === 12) return;
+
+    if(prefix === '' && card1Disqualified) return;
+    if(prefix === 'b2_' && card2Disqualified) return;
+
+    marked.add(index);
+  };
+
+  markOne(myCardNumbers, markedIndices, '');
+  markOne(myCardNumbers2, markedIndices2, 'b2_');
+
+  refreshCardCells();
+}
+
+function hasAutoWin(nums, marked){
+  if(!nums || nums.length !== 25) return false;
+
+  const hit = i => i === 12 || marked.has(i);
+
+  const patterns = [
+    [0,1,2,3,4],
+    [5,6,7,8,9],
+    [10,11,12,13,14],
+    [15,16,17,18,19],
+    [20,21,22,23,24],
+
+    [0,5,10,15,20],
+    [1,6,11,16,21],
+    [2,7,12,17,22],
+    [3,8,13,18,23],
+    [4,9,14,19,24],
+
+    [0,6,12,18,24],
+    [4,8,12,16,20],
+
+    [0,4,20,24]
+  ];
+
+  return patterns.some(pattern => pattern.every(hit));
+}
+
+function autoCheckWin(){
+  if(!autoMarkEnabled) return;
+  if(!claimWindowOpen) return;
+
+  if(
+    myCardId &&
+    !card1Disqualified &&
+    hasAutoWin(myCardNumbers, markedIndices)
+  ){
+    claimBingo(1);
+  }
+
+  if(
+    myCardId2 &&
+    !card2Disqualified &&
+    hasAutoWin(myCardNumbers2, markedIndices2)
+  ){
+    claimBingo(2);
+  }
+}
+
 // ─── GAME: NUMBER CALLED ──────────────────────────────────────
 function onNumberCalled(msg){
   const n=msg.number, cfg=numConfig(n);
   const circle=document.getElementById('ballCircle');
-  circle.style.background=cfg.color; circle.style.transform='scale(1.12)';
+
+  circle.style.background=cfg.color;
+  circle.style.transform='scale(1.12)';
   setTimeout(()=>circle.style.transform='scale(1)',180);
+
   document.getElementById('ballLetter').innerText=cfg.letter;
   document.getElementById('ballNumber').innerText=n;
   document.getElementById('ballSub').innerText=`${msg.callCount}/75`;
-  if(prevLastCalled){const p=document.getElementById('tb'+prevLastCalled);if(p)p.classList.remove('latest');}
+
+  if(prevLastCalled){
+    const p=document.getElementById('tb'+prevLastCalled);
+    if(p)p.classList.remove('latest');
+  }
+
   const tb=document.getElementById('tb'+n);
   if(tb) tb.className='t-ball '+cfg.cls+' latest';
+
   prevLastCalled=n;
 
-  // 🔊 Play the audio for this number
   playBallAudio(n);
 
-  claimWindowOpen=true; setBingoBtn('ready'); startClaimBar(msg.claimWindowMs||4800);
+  claimWindowOpen=true;
+  setBingoBtn('ready');
+  startClaimBar(msg.claimWindowMs||4800);
+
+  autoMarkNumber(n);
   refreshCardCells();
+
+  if(autoMarkEnabled){
+    setTimeout(()=>{
+      autoCheckWin();
+    },100);
+  }
 }
+
 function startClaimBar(ms){
   const bar=document.getElementById('claimBar');
   if(claimBarAnim) clearTimeout(claimBarAnim);
@@ -2076,6 +2216,12 @@ function applyDisqualifiedCards(){
 }
 
 function toggleCell(i,cell,prefix){
+
+  // Auto Mark ON → manual marking disabled
+  if(autoMarkEnabled){
+    return;
+  }
+
   const isCard2=prefix==='b2_';
 
   if(
@@ -2091,6 +2237,7 @@ function toggleCell(i,cell,prefix){
   else{ms.add(i);cell.classList.add('marked');}
   refreshCardCells();
 }
+
 function refreshCardCells(){
   const refreshOne=(nums,ms,pfx)=>{
     if(!nums.length) return;
@@ -2817,6 +2964,52 @@ loadPaymentInfo();
 }
 
 /* CURRENT CALLED BALL */
+#screenGame .current-called-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+
+#screenGame .auto-mark-control{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-shrink:0;
+}
+
+#screenGame .auto-mark-label{
+  font-size:11px;
+  font-weight:700;
+  color:var(--gray);
+  white-space:nowrap;
+}
+
+#screenGame .auto-mark-switch{
+  border:1px solid #444;
+  background:#1a1a1a;
+  color:var(--gray);
+  border-radius:20px;
+  padding:5px 10px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+  min-width:42px;
+}
+
+#screenGame .auto-mark-switch.on{
+  background:var(--green);
+  border-color:var(--green);
+  color:#fff;
+}
+
+#screenGame .current-called-header .current-called-title{
+  margin:0;
+  flex:1;
+  text-align:right;
+}
+
 #screenGame .current-called-wrap{
   position:absolute !important;
   top:64px !important;
