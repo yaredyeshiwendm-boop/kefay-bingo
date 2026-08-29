@@ -1184,15 +1184,45 @@ wss.on('connection',(ws)=>{
 
       switch(msg.type){
         case 'telegramAuth':{
-          const tid=String(msg.telegramId);
+          const verified=verifyTelegramInitData(msg.initData);
+
+          if(!verified){
+            send(ws,{
+              type:'authError',
+              message:'Invalid Telegram authentication.'
+            });
+            break;
+          }
+
+          const tid=verified.telegramId;
           const user=await loadUser(tid);
+
           if(user){
-            client.telegramId=tid; client.playerName=user.name; client.balance=user.balance; client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-          send(ws,{type:'authSuccess',playerName:user.name,balance:user.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
+            client.telegramId=tid;
+            client.playerName=user.name;
+            client.balance=user.balance;
+            client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
+
+            send(ws,{
+              type:'authSuccess',
+              playerName:user.name,
+              balance:user.balance,
+              isRegistered:true,
+              isAdmin:client.isAdmin,
+              adminToken:client.isAdmin?ADMIN_PHONE:undefined
+            });
           } else {
             client.telegramId=tid;
-            send(ws,{type:'authSuccess',playerName:'',balance:10,isRegistered:false,isAdmin:false});
+
+            send(ws,{
+              type:'authSuccess',
+              playerName:'',
+              balance:10,
+              isRegistered:false,
+              isAdmin:false
+            });
           }
+
           break;
         }
         case 'setName':{
@@ -2287,7 +2317,7 @@ Choose Game 👇`,
               {
                 text:'NORMAL BINGO',
                 web_app:{
-                  url:`${GAME_URL}?tid=${tid}&game=normal`
+                  url:`${GAME_URL}?game=normal`
                 }
               }
             ],
@@ -2295,7 +2325,7 @@ Choose Game 👇`,
               {
                 text:'SUPER BINGO',
                 web_app:{
-                  url:`${GAME_URL}?tid=${tid}&game=super`
+                  url:`${GAME_URL}?game=super`
                 }
               }
             ]
@@ -2397,7 +2427,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'NORMAL BINGO',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=normal`
+                url:`${GAME_URL}?game=normal`
               }
             }
           ],
@@ -2405,7 +2435,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'SUPER BINGO',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=super`
+                url:`${GAME_URL}?game=super`
               }
             }
           ]
@@ -2463,7 +2493,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'NORMAL BINGO',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=normal`
+                url:`${GAME_URL}?game=normal`
               }
             }
           ],
@@ -2471,7 +2501,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'SUPER BINGO',
               web_app:{
-                url:`${GAME_URL}?tid=${tid}&game=super`
+                url:`${GAME_URL}?game=super`
               }
             }
           ]
@@ -2491,7 +2521,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💰 Tap below to deposit:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'DEPOSIT', web_app:{ url:`${GAME_URL}?tid=${tid}&page=deposit` }}]]
+          inline_keyboard:[[{ text:'DEPOSIT', web_app:{ url:`${GAME_URL}?page=deposit` }}]]
         }
       });
     }
@@ -2500,7 +2530,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💸 Tap below to withdraw:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'WITHDRAW', web_app:{ url:`${GAME_URL}?tid=${tid}&page=withdraw` }}]]
+          inline_keyboard:[[{ text:'WITHDRAW', web_app:{ url:`${GAME_URL}?page=withdraw` }}]]
         }
       });
     }

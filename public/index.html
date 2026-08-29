@@ -1223,7 +1223,8 @@ function connect(){
   if(telegramId){
     wsSend({
       type:'telegramAuth',
-      telegramId:parseInt(telegramId)
+      telegramId:parseInt(telegramId),
+      initData:Telegram.WebApp.initData
     });
   }
 };
@@ -1251,7 +1252,8 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         document.getElementById('loadingText').innerText='Loading your account...';
         wsSend({
           type:'telegramAuth',
-          telegramId:parseInt(telegramId)
+          telegramId:parseInt(telegramId),
+      initData:Telegram.WebApp.initData
         });
       } else {
         goScreen('screenLobby');
