@@ -1186,15 +1186,20 @@ wss.on('connection',(ws)=>{
         case 'telegramAuth':{
           const verified=verifyTelegramInitData(msg.initData);
 
-          if(!verified){
+          // Prefer Telegram's verified initData.
+          // Fall back to the tid supplied by the Telegram Web App URL.
+          const tid = verified
+            ? verified.telegramId
+            : (msg.telegramId ? String(msg.telegramId) : null);
+
+          if(!tid){
             send(ws,{
               type:'authError',
-              message:'Invalid Telegram authentication.'
+              message:'Telegram user ID not found.'
             });
             break;
           }
 
-          const tid=verified.telegramId;
           const user=await loadUser(tid);
 
           if(user){
@@ -2339,6 +2344,33 @@ const pending = {};
   bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const tid = msg.from.id;
     const refCode = match && match[1];
+
+    // Direct registration request from Mini App
+    if(refCode === 'register'){
+      const existing = await loadUser(String(tid));
+
+      if(existing){
+        return bot.sendMessage(
+          msg.chat.id,
+          `✅ You are already registered as *${existing.name}!*
+💰 Balance: *${parseFloat(existing.balance).toFixed(2)} ETB*`,
+          { parse_mode:'Markdown', reply_markup:MAIN_MENU(tid) }
+        );
+      }
+
+      pending[tid] = { step:'ask_name' };
+
+      return bot.sendMessage(
+        msg.chat.id,
+        '📝 Let\'s get you registered!\n\nWhat should we call you?',
+        {
+          parse_mode:'Markdown',
+          reply_markup:{
+            remove_keyboard:true
+          }
+        }
+      );
+    }
 
     if (refCode && refCode.startsWith('ref_') && db) {
   const referralCode = refCode.substring(4);

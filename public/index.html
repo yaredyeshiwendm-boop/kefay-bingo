@@ -470,6 +470,31 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   <div class="loading-text" id="loadingText">Connecting...</div>
 </div>
 
+<!-- REGISTRATION LOCK -->
+<div id="screenRegisterLock" class="screen">
+  <div style="min-height:70vh;display:flex;align-items:center;justify-content:center;padding:25px">
+    <div style="width:100%;max-width:420px;text-align:center;padding:32px 22px;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(255,255,255,.04);box-shadow:0 15px 45px rgba(0,0,0,.35)">
+      <div style="font-size:58px;margin-bottom:15px">🔒</div>
+
+      <h2 style="margin:0 0 10px">Registration Required</h2>
+
+      <p style="color:var(--gray);line-height:1.6;margin:0 0 25px">
+        You need to register before using Kefay Bingo.
+      </p>
+
+      <button
+        onclick="openTelegramRegistration()"
+        style="width:100%;padding:14px;border:0;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer">
+        REGISTER NOW
+      </button>
+
+      <div style="margin-top:15px;font-size:12px;color:var(--gray)">
+        Already registered? Please close and reopen the Mini App.
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="screenLobby" class="screen">
   <div class="welcome-banner">
     <div class="welcome-name">Welcome, <span id="welcomeName">Player</span>!</div>
@@ -1138,6 +1163,19 @@ const gameMode = new URLSearchParams(location.search).get('game') || 'normal';
 let cardPool=[]; let reservedSuperBoards=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
+function openTelegramRegistration(){
+  try{
+    const url = 'https://t.me/Kefay_bingo_bot?start=register';
+    if(window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink){
+      Telegram.WebApp.openTelegramLink(url);
+    }else{
+      window.open(url, '_blank');
+    }
+  }catch(e){
+    window.open('https://t.me/Kefay_bingo_bot?start=register', '_blank');
+  }
+}
+
 function getTelegramId(){
   const p=new URLSearchParams(location.search);
   if(p.get('tid')) return p.get('tid');
@@ -1261,6 +1299,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'authSuccess':
+  // Block unregistered users inside the Mini App.
+  if(!msg.isRegistered){
+    document.getElementById('screenLoading').classList.remove('active');
+    document.getElementById('screenRegisterLock').classList.add('active');
+    break;
+  }
+
   myName=msg.playerName||'Player';
   setBalance(msg.balance||0);
   isAdmin=msg.isAdmin||false;
