@@ -1308,9 +1308,13 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     break;
   }
 
-  if(msg.stakes){
+  // Authentication finished — show the lobby first.
+  goScreen('screenLobby');
+
+  // Render stake cards after the lobby DOM becomes visible.
+  requestAnimationFrame(()=>{
     renderStakes(msg.stakes);
-  }
+  });
 
   myName=msg.playerName||'Player';
   setBalance(msg.balance||0);
