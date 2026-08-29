@@ -2285,17 +2285,35 @@ console.log(
 );
 const pending = {};
 
-  const MAIN_MENU = {
-    keyboard: [
-      [{ text: '🎮 Play Now' }, { text: '📝 Register' }],
-      [{ text: '💰 Deposit' }, { text: '💸 Withdraw' }],
-      [{ text: '💰 Balance' }, { text: '🎁 Invite Friends' }],
-      [{ text: '🎯 Game Patterns' }, { text: '📖 Instructions' }],
-      [{ text: '🆘 24H Support 1' }, { text: '🆘 Support 2' }]
-    ],
-    resize_keyboard: true,
-    persistent: true
-  };
+  function MAIN_MENU(tid){
+    const id = String(tid);
+
+    return {
+      keyboard: [
+        [
+          { text: 'NORMAL BINGO', web_app: { url: `${GAME_URL}?tid=${id}&game=normal` } },
+          { text: 'SUPER BINGO', web_app: { url: `${GAME_URL}?tid=${id}&game=super` } }
+        ],
+        [
+          { text: 'DEPOSIT', web_app: { url: `${GAME_URL}?tid=${id}&page=deposit` } },
+          { text: 'WITHDRAW', web_app: { url: `${GAME_URL}?tid=${id}&page=withdraw` } }
+        ],
+        [
+          { text: 'REGISTER' }
+        ],
+        [
+          { text: 'INVITE FRIENDS' },
+          { text: 'BALANCE' }
+        ],
+        [
+          { text: '24H SUPPORT 1' },
+          { text: 'SUPPORT 2' }
+        ]
+      ],
+      resize_keyboard: true,
+      persistent: true
+    };
+  }
 
  async function showMainMenu(chatId, tid, firstName){
   const user = await loadUser(String(tid));
@@ -2303,34 +2321,10 @@ const pending = {};
   if(user){
     bot.sendMessage(
       chatId,
-      `🎱 *Kefay Bingo*
-
-👤 User: *${user.name}*
-💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*
-
-Choose Game 👇`,
+      `👋 Welcome back, *${user.name}*!\n\nUse the buttons below. 👇`,
       {
         parse_mode:'Markdown',
-        reply_markup:{
-          inline_keyboard:[
-            [
-              {
-                text:'NORMAL BINGO',
-                web_app:{
-                  url:`${GAME_URL}?game=normal`
-                }
-              }
-            ],
-            [
-              {
-                text:'SUPER BINGO',
-                web_app:{
-                  url:`${GAME_URL}?game=super`
-                }
-              }
-            ]
-          ]
-        }
+        reply_markup:MAIN_MENU
       }
     );
   } else {
@@ -2410,7 +2404,7 @@ bot.onText(/🎮 Play Now/, async msg => {
     return bot.sendMessage(
       msg.chat.id,
       '⚠️ Please register first by pressing 📝 Register.',
-      { reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU(tid) }
     );
   }
 
@@ -2427,7 +2421,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'NORMAL BINGO',
               web_app:{
-                url:`${GAME_URL}?game=normal`
+                url:`${GAME_URL}?tid=${tid}&game=normal`
               }
             }
           ],
@@ -2435,7 +2429,7 @@ bot.onText(/🎮 Play Now/, async msg => {
             {
               text:'SUPER BINGO',
               web_app:{
-                url:`${GAME_URL}?game=super`
+                url:`${GAME_URL}?tid=${tid}&game=super`
               }
             }
           ]
@@ -2449,7 +2443,7 @@ bot.onText(/🎮 Play Now/, async msg => {
     const u = await loadUser(String(msg.from.id));
     bot.sendMessage(msg.chat.id,
       u ? `💰 Balance: *${parseFloat(u.balance).toFixed(2)} ETB*` : 'Use /start to register.',
-      { reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU(tid) }
     );
   });
 
@@ -2474,75 +2468,20 @@ bot.onText(/🎮 Play Now/, async msg => {
     // ── Handle menu button presses ──
     const user = await loadUser(String(tid));
 
-    if(text === '🎮 Play Now'){
-  if(!user) {
-    return bot.sendMessage(
-      msg.chat.id,
-      '⚠️ Please register first by pressing 📝 Register.',
-      { reply_markup: MAIN_MENU }
-    );
-  }
-
-  bot.sendMessage(
-    msg.chat.id,
-    `🎮 Choose Bingo Game\n\nSelect the game you want to play:`,
-    {
-      reply_markup:{
-        inline_keyboard:[
-          [
-            {
-              text:'NORMAL BINGO',
-              web_app:{
-                url:`${GAME_URL}?game=normal`
-              }
-            }
-          ],
-          [
-            {
-              text:'SUPER BINGO',
-              web_app:{
-                url:`${GAME_URL}?game=super`
-              }
-            }
-          ]
-        ]
-      }
-    }
-  );
-}
-
-    else if(text === '📝 Register'){
-      if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { reply_markup: MAIN_MENU });
+    if(text === 'REGISTER'){
+      if(user) return bot.sendMessage(msg.chat.id, `✅ You are already registered as *${user.name}!*\n💰 Balance: *${parseFloat(user.balance).toFixed(2)} ETB*`, { reply_markup: MAIN_MENU(tid) });
       pending[tid] = { step:'ask_name' };
-      bot.sendMessage(msg.chat.id, '📝 Let\'s get you registered!\n\nWhat should we call you?', { reply_markup: MAIN_MENU });
-    }
-
-    else if(text === '💰 Deposit'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `💰 Tap below to deposit:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'DEPOSIT', web_app:{ url:`${GAME_URL}?page=deposit` }}]]
-        }
-      });
-    }
-
-    else if(text === '💸 Withdraw'){
-      if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
-      bot.sendMessage(msg.chat.id, `💸 Tap below to withdraw:`, {
-        reply_markup:{
-          inline_keyboard:[[{ text:'WITHDRAW', web_app:{ url:`${GAME_URL}?page=withdraw` }}]]
-        }
-      });
+      bot.sendMessage(msg.chat.id, '📝 Let\'s get you registered!\n\nWhat should we call you?', { reply_markup: MAIN_MENU(tid) });
     }
 
     else if(text === '🔀 Transfer'){
       bot.sendMessage(msg.chat.id,
         `🔀 *Transfer*\n\nPlayer-to-player transfer is coming soon! Stay tuned 🚀`,
-        { reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU(tid) }
       );
     }
 
-   else if(text === '🎁 Invite Friends'){
+   else if(text === 'INVITE FRIENDS'){
   const me = await bot.getMe();
   const user = await loadUser(String(tid));
 
@@ -2550,7 +2489,7 @@ bot.onText(/🎮 Play Now/, async msg => {
     return bot.sendMessage(
       msg.chat.id,
       '⚠️ Please register first.',
-      { reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU(tid) }
     );
   }
 
@@ -2563,7 +2502,7 @@ bot.onText(/🎮 Play Now/, async msg => {
   bot.sendMessage(
     msg.chat.id,
     `🎁 Invite Friends & Earn!\n\n🔗 Your referral link:\n${link}\n\n👥 Invite your friends and earn bonus ETB! 🎉`,
-    { reply_markup: MAIN_MENU }
+    { reply_markup: MAIN_MENU(tid) }
   );
 } 
 
@@ -2571,28 +2510,28 @@ bot.onText(/🎮 Play Now/, async msg => {
     else if(text === '🎯 Game Patterns'){
       bot.sendMessage(msg.chat.id,
         `🎯 *Winning Patterns*\n\n✅ Any complete *row* (horizontal)\n✅ Any complete *column* (vertical)\n✅ Either *diagonal*\n✅ *4 corners*\n\nThe FREE space in the center counts automatically!\n\nPress BINGO as soon as you complete a pattern! 🎉`,
-        { reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU(tid) }
       );
     }
 
     else if(text === '📖 Instructions'){
       bot.sendMessage(msg.chat.id,
         `📖 *How to Play Kefay Bingo*\n\n1️⃣ Deposit ETB into your wallet\n2️⃣ Choose a stake tier (10–100 ETB)\n3️⃣ Pick your lucky card (1–400)\n4️⃣ Numbers are called every 5 seconds\n5️⃣ Mark numbers on your card\n6️⃣ Complete a pattern and press *BINGO!* 🎉\n\n🏆 Winner gets *80%* of the total pot\n🏠 House takes *20%*\n⚠️ False BINGO = disqualification!`,
-        { reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU(tid) }
       );
     }
 
-    else if(text === '🆘 24H Support 1'){
+    else if(text === '24H SUPPORT 1'){
       bot.sendMessage(msg.chat.id,
         `🆘 *24H Support*\n\nContact us anytime:\n👤 @Kefay_support\n\nWe typically respond within a few minutes.`,
-        { reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU(tid) }
       );
     }
 
-    else if(text === '🆘 Support 2'){
+    else if(text === 'SUPPORT 2'){
       bot.sendMessage(msg.chat.id,
         `🆘 *Support 2*\n\nAlternate support contact:\n👤 @Kefay_supoort2`,
-        { reply_markup: MAIN_MENU }
+        { reply_markup: MAIN_MENU(tid) }
       );
     }
   });
@@ -2804,7 +2743,7 @@ bot.on('contact', async msg => {
     }
     bot.sendMessage(msg.chat.id,
       `✅ *Registered Successfully!*\n\n👤 Name: *${name}*\n📱 Phone: ${phone}\n💰 Balance: *${balance} ETB*\n\nDeposit ETB to start playing! 🎱`,
-      { reply_markup: MAIN_MENU }
+      { reply_markup: MAIN_MENU(tid) }
     );
   });
 
