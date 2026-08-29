@@ -1290,8 +1290,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         document.getElementById('loadingText').innerText='Loading your account...';
         wsSend({
           type:'telegramAuth',
-          telegramId:parseInt(telegramId),
-      initData:Telegram.WebApp.initData
+          telegramId:String(telegramId)
         });
       } else {
         goScreen('screenLobby');
@@ -1299,6 +1298,9 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
       break;
 
     case 'authSuccess':
+  // Authentication completed — stop loading screen.
+  document.getElementById('screenLoading').classList.remove('active');
+
   // Block unregistered users inside the Mini App.
   if(!msg.isRegistered){
     document.getElementById('screenLoading').classList.remove('active');

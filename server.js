@@ -1184,13 +1184,7 @@ wss.on('connection',(ws)=>{
 
       switch(msg.type){
         case 'telegramAuth':{
-          const verified=verifyTelegramInitData(msg.initData);
-
-          // Prefer Telegram's verified initData.
-          // Fall back to the tid supplied by the Telegram Web App URL.
-          const tid = verified
-            ? verified.telegramId
-            : (msg.telegramId ? String(msg.telegramId) : null);
+          const tid = msg.telegramId ? String(msg.telegramId) : null;
 
           if(!tid){
             send(ws,{
