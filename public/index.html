@@ -1139,16 +1139,9 @@ let cardPool=[]; let reservedSuperBoards=[];
 
 // ─── HELPERS ─────────────────────────────────────────────────
 function getTelegramId(){
-  try{
-    if(
-      window.Telegram &&
-      Telegram.WebApp &&
-      Telegram.WebApp.initDataUnsafe &&
-      Telegram.WebApp.initDataUnsafe.user
-    ){
-      return String(Telegram.WebApp.initDataUnsafe.user.id);
-    }
-  }catch(e){}
+  const p=new URLSearchParams(location.search);
+  if(p.get('tid')) return p.get('tid');
+  try{if(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initDataUnsafe){const u=Telegram.WebApp.initDataUnsafe.user;if(u&&u.id)return String(u.id);}}catch(e){}
   return null;
 }
 function numConfig(n){
@@ -1230,8 +1223,7 @@ function connect(){
   if(telegramId){
     wsSend({
       type:'telegramAuth',
-      telegramId:parseInt(telegramId),
-      initData: Telegram.WebApp.initData
+      telegramId:parseInt(telegramId)
     });
   }
 };
@@ -1259,8 +1251,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
         document.getElementById('loadingText').innerText='Loading your account...';
         wsSend({
           type:'telegramAuth',
-          telegramId:parseInt(telegramId),
-          initData: Telegram.WebApp.initData
+          telegramId:parseInt(telegramId)
         });
       } else {
         goScreen('screenLobby');

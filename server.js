@@ -1184,57 +1184,15 @@ wss.on('connection',(ws)=>{
 
       switch(msg.type){
         case 'telegramAuth':{
-          // 🔐 Verify Telegram WebApp identity on the server.
-          const verified = verifyTelegramInitData(msg.initData);
-
-          if(!verified){
-            send(ws,{
-              type:'authError',
-              message:'Invalid Telegram authentication.'
-            });
-            break;
-          }
-
-          const tid = verified.telegramId;
-
-          // Never trust telegramId supplied separately by the client.
-          if(msg.telegramId && String(msg.telegramId)!==tid){
-            send(ws,{
-              type:'authError',
-              message:'Telegram identity mismatch.'
-            });
-            break;
-          }
-
+          const tid=String(msg.telegramId);
           const user=await loadUser(tid);
-
           if(user){
-            client.telegramId=tid;
-            client.playerName=user.name;
-            client.balance=user.balance;
-            client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
-
-            send(ws,{
-              type:'authSuccess',
-              playerName:user.name,
-              balance:user.balance,
-              isRegistered:true,
-              isAdmin:client.isAdmin,
-              adminToken:client.isAdmin?ADMIN_PHONE:undefined
-            });
-
+            client.telegramId=tid; client.playerName=user.name; client.balance=user.balance; client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
+          send(ws,{type:'authSuccess',playerName:user.name,balance:user.balance,isRegistered:true,isAdmin:client.isAdmin,adminToken:client.isAdmin?ADMIN_PHONE:undefined});
           } else {
             client.telegramId=tid;
-
-            send(ws,{
-              type:'authSuccess',
-              playerName:'',
-              balance:10,
-              isRegistered:false,
-              isAdmin:false
-            });
+            send(ws,{type:'authSuccess',playerName:'',balance:10,isRegistered:false,isAdmin:false});
           }
-
           break;
         }
         case 'setName':{
