@@ -1208,7 +1208,8 @@ wss.on('connection',(ws)=>{
               balance:user.balance,
               isRegistered:true,
               isAdmin:client.isAdmin,
-              adminToken:client.isAdmin?ADMIN_PHONE:undefined
+              adminToken:client.isAdmin?ADMIN_PHONE:undefined,
+              stakes:lobbyStakes
             });
           } else {
             client.telegramId=tid;
@@ -1218,7 +1219,8 @@ wss.on('connection',(ws)=>{
               playerName:'',
               balance:10,
               isRegistered:false,
-              isAdmin:false
+              isAdmin:false,
+              stakes:lobbyStakes
             });
           }
 

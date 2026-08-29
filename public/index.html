@@ -1308,6 +1308,10 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
     break;
   }
 
+  if(msg.stakes){
+    renderStakes(msg.stakes);
+  }
+
   myName=msg.playerName||'Player';
   setBalance(msg.balance||0);
   isAdmin=msg.isAdmin||false;
