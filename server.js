@@ -2285,7 +2285,7 @@ Choose Game 👇`,
           inline_keyboard:[
             [
               {
-                text:'🎱 Normal Bingo',
+                text:'NORMAL BINGO',
                 web_app:{
                   url:`${GAME_URL}?tid=${tid}&game=normal`
                 }
@@ -2293,7 +2293,7 @@ Choose Game 👇`,
             ],
             [
               {
-                text:'🔥 Super Bingo',
+                text:'SUPER BINGO',
                 web_app:{
                   url:`${GAME_URL}?tid=${tid}&game=super`
                 }
@@ -2395,7 +2395,7 @@ bot.onText(/🎮 Play Now/, async msg => {
         inline_keyboard:[
           [
             {
-              text:'🎱 Normal Bingo',
+              text:'NORMAL BINGO',
               web_app:{
                 url:`${GAME_URL}?tid=${tid}&game=normal`
               }
@@ -2403,7 +2403,7 @@ bot.onText(/🎮 Play Now/, async msg => {
           ],
           [
             {
-              text:'🔥 Super Bingo',
+              text:'SUPER BINGO',
               web_app:{
                 url:`${GAME_URL}?tid=${tid}&game=super`
               }
@@ -2461,7 +2461,7 @@ bot.onText(/🎮 Play Now/, async msg => {
         inline_keyboard:[
           [
             {
-              text:'🎱 Normal Bingo',
+              text:'NORMAL BINGO',
               web_app:{
                 url:`${GAME_URL}?tid=${tid}&game=normal`
               }
@@ -2469,7 +2469,7 @@ bot.onText(/🎮 Play Now/, async msg => {
           ],
           [
             {
-              text:'🔥 Super Bingo',
+              text:'SUPER BINGO',
               web_app:{
                 url:`${GAME_URL}?tid=${tid}&game=super`
               }
@@ -2491,7 +2491,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💰 Tap below to deposit:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'💰 Deposit Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=deposit` }}]]
+          inline_keyboard:[[{ text:'DEPOSIT', web_app:{ url:`${GAME_URL}?tid=${tid}&page=deposit` }}]]
         }
       });
     }
@@ -2500,7 +2500,7 @@ bot.onText(/🎮 Play Now/, async msg => {
       if(!user) return bot.sendMessage(msg.chat.id, '⚠️ Please register first.', { reply_markup: MAIN_MENU });
       bot.sendMessage(msg.chat.id, `💸 Tap below to withdraw:`, {
         reply_markup:{
-          inline_keyboard:[[{ text:'💸 Withdraw Now', web_app:{ url:`${GAME_URL}?tid=${tid}&page=withdraw` }}]]
+          inline_keyboard:[[{ text:'WITHDRAW', web_app:{ url:`${GAME_URL}?tid=${tid}&page=withdraw` }}]]
         }
       });
     }
