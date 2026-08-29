@@ -2324,7 +2324,7 @@ const pending = {};
       `👋 Welcome back, *${user.name}*!\n\nUse the buttons below. 👇`,
       {
         parse_mode:'Markdown',
-        reply_markup:MAIN_MENU
+        reply_markup:MAIN_MENU(tid)
       }
     );
   } else {
