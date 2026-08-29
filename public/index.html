@@ -1359,8 +1359,12 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   const scText=document.getElementById('superCountdownText');
 
   if(scBox && scText){
-    if(msg.superCountdown){
+    if(gameMode !== 'super'){
+      clearInterval(superCountdownTimer);
+      scBox.style.display='none';
+    } else if(msg.superCountdown && Number.isFinite(Number(msg.superCountdown.totalSeconds))){
   const sc=msg.superCountdown;
+  sc.totalSeconds=Number(sc.totalSeconds);
 
   clearInterval(superCountdownTimer);
 
