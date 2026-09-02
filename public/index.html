@@ -1202,8 +1202,8 @@ function setBalance(amt, bonusAmt, winAmt){
   currentBalance=parseFloat(amt) || 0;
 
   const bonus = bonusAmt !== undefined ? (parseFloat(bonusAmt) || 0) : currentBalance;
-  currentWinBalance = win;
   const win = winAmt !== undefined ? (parseFloat(winAmt) || 0) : 0;
+  currentWinBalance = win;
 
   document.getElementById("balanceEl").innerText=`ETB ${currentBalance.toFixed(2)}`;
 
