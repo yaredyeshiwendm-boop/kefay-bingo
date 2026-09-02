@@ -1153,7 +1153,7 @@ body{background:var(--bg);color:#fff;font-family:'Inter',sans-serif;padding-bott
   const ADMIN_PHONE_CLIENT = '251934255415';
   const ADMIN_PHONE_CLIENT2 = '251912737524';
 let ws, myPlayerId, myName='', myRoomId=localStorage.getItem('roomId')||null, myStakeId=null;
-let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0;
+let myCardId=null, myCardNumbers=[], markedIndices=new Set(), currentBalance=0, currentWinBalance=0;
 let myCardId2=null, myCardNumbers2=[], markedIndices2=new Set();
 let card1Disqualified=false;
 let card2Disqualified=false;
@@ -1190,17 +1190,20 @@ function numConfig(n){
   return{letter:'O',cls:'co',color:'var(--o)'};
 }
 function colClass(n){if(n<=15)return 'cb';if(n<=30)return 'ci';if(n<=45)return 'cn';if(n<=60)return 'cg';return 'co';}
-function setBalance(amt){
+function setBalance(amt, bonusAmt, winAmt){
   currentBalance=parseFloat(amt) || 0;
-  const f=`ETB ${currentBalance.toFixed(2)}`;
 
-  document.getElementById('balanceEl').innerText=f;
+  const bonus = bonusAmt !== undefined ? (parseFloat(bonusAmt) || 0) : currentBalance;
+  currentWinBalance = win;
+  const win = winAmt !== undefined ? (parseFloat(winAmt) || 0) : 0;
 
-  const bonusEl=document.getElementById('bonusBalAmt');
-  const winEl=document.getElementById('winBalAmt');
+  document.getElementById("balanceEl").innerText=`ETB ${currentBalance.toFixed(2)}`;
 
-  if(bonusEl) bonusEl.innerText=f;
-  if(winEl) winEl.innerText='ETB 0.00';
+  const bonusEl=document.getElementById("bonusBalAmt");
+  const winEl=document.getElementById("winBalAmt");
+
+  if(bonusEl) bonusEl.innerText=`ETB ${bonus.toFixed(2)}`;
+  if(winEl) winEl.innerText=`ETB ${win.toFixed(2)}`;
 }
 let walletOpen=false;
 
@@ -1317,7 +1320,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
   });
 
   myName=msg.playerName||'Player';
-  setBalance(msg.balance||0);
+  setBalance(msg.balance||0, msg.bonusBalance, msg.winBalance);
   isAdmin=msg.isAdmin||false;
   adminToken=telegramId||'';
   document.getElementById('welcomeName').innerText=myName||'Player';
@@ -1399,7 +1402,7 @@ if(pageParam === 'withdraw') setTimeout(()=>{ navGo('screenWallet','navWallet');
    case 'joinedRoom':
       localStorage.setItem('roomId', msg.roomId);
       myRoomId=msg.roomId; myStakeId=msg.stakeId; myCardId=null; myCardId2=null; reservedSuperBoards=msg.reservedSuperBoards||[];
-      markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance);
+      markedIndices=new Set([12]); markedIndices2=new Set([12]); setBalance(msg.balance, msg.bonusBalance, msg.winBalance);
       resetSlotUI();
       document.getElementById('previewCard1').innerHTML=''; document.getElementById('previewCard2').innerHTML='';
       updatePrizePot(msg.playerCount||0, msg.stakeAmount||0);
@@ -1565,13 +1568,13 @@ renderBothCards();
       myRoomId=msg.roomId; myCardId=null; myCardId2=null;
       myCardNumbers=[]; myCardNumbers2=[];
       markedIndices=new Set([12]); markedIndices2=new Set([12]);
-      claimWindowOpen=false; hideWinnerOverlay(); if(msg.balance!==undefined)setBalance(msg.balance);
+      claimWindowOpen=false; hideWinnerOverlay(); if(msg.balance!==undefined)setBalance(msg.balance, msg.bonusBalance, msg.winBalance);
       resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
       document.getElementById('previewCard1').innerHTML=''; document.getElementById('previewCard2').innerHTML='';
       document.getElementById('cdCountdown').innerText='Waiting...';
       navGo('screenCards','navCards'); break;
 
-    case 'balanceUpdate': setBalance(msg.balance); break;
+    case 'balanceUpdate': setBalance(msg.balance, msg.bonusBalance, msg.winBalance); break;
 
     case 'leftRoom': localStorage.removeItem('roomId'); myRoomId=null; myCardId=null; myCardId2=null; navGo('screenLobby','navHome'); break;
 
@@ -1669,14 +1672,14 @@ function submitWithdrawal(){
     return;
   }
 
-  if(amount>currentBalance){
-    showWalletMsg(
-      'withdrawMsg',
-      'Insufficient balance.',
-      'error'
-    );
-    return;
-  }
+    if(amount>currentWinBalance){
+      showWalletMsg(
+        'withdrawMsg',
+        'Insufficient Win Balance.',
+        'error'
+      );
+      return;
+    }
 
   wsSend({
     type:'withdrawalRequest',

@@ -55,13 +55,6 @@ module.exports = {   async q(text, params = []) {
     return rows[0] || null;
   },
 
-  async updateBalance(userId, amount) {
-    const { rows } = await pool.query(
-      'UPDATE users SET balance=$1 WHERE id=$2 RETURNING balance',
-      [amount, userId]
-    );
-    return rows[0]?.balance;
-  },
 
   async deductStake(userId, amount, gameId) {
     const { rows } = await pool.query(
@@ -236,15 +229,19 @@ module.exports = {   async q(text, params = []) {
   },
 
   // ── Balance & transaction operations ──
-  async setBalance(telegramId, balance) {
+
+  async setWallet(telegramId, bonusBalance, winBalance) {
     const { rows } = await pool.query(
       `UPDATE users
-       SET balance=$1, last_seen=NOW()
-       WHERE telegram_id=$2
-       RETURNING balance`,
-      [balance, String(telegramId)]
+       SET bonus_balance=$1,
+           win_balance=$2,
+           balance=$1+$2,
+           last_seen=NOW()
+       WHERE telegram_id=$3
+       RETURNING bonus_balance, win_balance, balance`,
+      [bonusBalance, winBalance, String(telegramId)]
     );
-    return rows[0]?.balance;
+    return rows[0] || null;
   },
 
   async logTx(telegramId, type, amount, balanceAfter, reference=null) {
@@ -328,7 +325,7 @@ module.exports = {   async q(text, params = []) {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `SELECT d.*, u.telegram_id, u.balance
+        `SELECT d.*, u.telegram_id, u.balance, u.bonus_balance, u.win_balance
          FROM deposit_requests d
          JOIN users u ON u.id=d.user_id
          WHERE d.id=$1 AND d.status='pending'
@@ -342,13 +339,13 @@ module.exports = {   async q(text, params = []) {
       }
 
       const d = rows[0];
-      const newBalance = Number(d.balance) + Number(d.amount);
+      const newBonusBalance = Number(d.bonus_balance) + Number(d.amount);
 
       await client.query(
         `UPDATE users
-         SET balance=$1, last_seen=NOW()
+         SET bonus_balance=$1, balance=$1+win_balance, last_seen=NOW()
          WHERE id=$2`,
-        [newBalance, d.user_id]
+        [newBonusBalance, d.user_id]
       );
 
       await client.query(
@@ -362,7 +359,7 @@ module.exports = {   async q(text, params = []) {
         `INSERT INTO transactions
          (user_id,type,amount,balance_after,reference)
          VALUES ($1,'deposit',$2,$3,$4)`,
-        [d.user_id, d.amount, newBalance, `deposit:${id}`]
+        [d.user_id, d.amount, newBonusBalance + Number(d.win_balance), `deposit:${id}`]
       );
 
       await client.query('COMMIT');
@@ -371,11 +368,10 @@ module.exports = {   async q(text, params = []) {
         id,
         telegramId: d.telegram_id,
         amount: Number(d.amount),
-        newBalance
+        newBalance: newBonusBalance + Number(d.win_balance),
+        bonusBalance: newBonusBalance,
+        winBalance: Number(d.win_balance) || 0
       };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
     } finally {
       client.release();
     }
@@ -401,7 +397,7 @@ module.exports = {   async q(text, params = []) {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `SELECT id, telegram_id, balance
+        `SELECT id, telegram_id, balance, bonus_balance, win_balance
          FROM users
          WHERE telegram_id=$1
          FOR UPDATE`,
@@ -415,16 +411,16 @@ module.exports = {   async q(text, params = []) {
 
       const user = rows[0];
 
-      if (Number(user.balance) < Number(amount)) {
+      if (Number(user.win_balance) < Number(amount)) {
         await client.query('ROLLBACK');
-        return { error: 'Insufficient balance.' };
+        return { error: 'Insufficient Win Balance.' };
       }
 
-      const newBalance = Number(user.balance) - Number(amount);
+      const newWinBalance = Number(user.win_balance) - Number(amount);
 
       await client.query(
-        `UPDATE users SET balance=$1 WHERE id=$2`,
-        [newBalance, user.id]
+        `UPDATE users SET win_balance=$1, balance=bonus_balance+$1 WHERE id=$2`,
+        [newWinBalance, user.id]
       );
 
       const result = await client.query(
@@ -439,7 +435,7 @@ module.exports = {   async q(text, params = []) {
         `INSERT INTO transactions
          (user_id,type,amount,balance_after,reference)
          VALUES ($1,'withdrawal',$2,$3,$4)`,
-        [user.id, -Number(amount), newBalance, `withdrawal:${result.rows[0].id}`]
+        [user.id, -Number(amount), Number(user.bonus_balance) + newWinBalance, `withdrawal:${result.rows[0].id}`]
       );
 
       await client.query('COMMIT');
@@ -448,7 +444,9 @@ module.exports = {   async q(text, params = []) {
         id: result.rows[0].id,
         telegramId: user.telegram_id,
         amount: Number(amount),
-        newBalance
+        newBalance: Number(user.bonus_balance) + newWinBalance,
+        bonusBalance: Number(user.bonus_balance),
+        winBalance: newWinBalance,
       };
     } catch (e) {
       await client.query('ROLLBACK');
@@ -500,7 +498,7 @@ module.exports = {   async q(text, params = []) {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `SELECT w.*, u.telegram_id, u.balance
+        `SELECT w.*, u.telegram_id, u.balance, u.bonus_balance, u.win_balance
          FROM withdrawal_requests w
          JOIN users u ON u.id=w.user_id
          WHERE w.id=$1 AND w.status='pending'
@@ -514,11 +512,11 @@ module.exports = {   async q(text, params = []) {
       }
 
       const w = rows[0];
-      const newBalance = Number(w.balance) + Number(w.amount);
+      const newWinBalance = Number(w.win_balance) + Number(w.amount);
 
       await client.query(
-        `UPDATE users SET balance=$1 WHERE id=$2`,
-        [newBalance, w.user_id]
+        `UPDATE users SET win_balance=$1, balance=bonus_balance+$1 WHERE id=$2`,
+        [newWinBalance, w.user_id]
       );
 
       await client.query(
@@ -532,7 +530,7 @@ module.exports = {   async q(text, params = []) {
         `INSERT INTO transactions
          (user_id,type,amount,balance_after,reference)
          VALUES ($1,'refund',$2,$3,$4)`,
-        [w.user_id, Number(w.amount), newBalance, `withdrawal_refund:${id}`]
+        [w.user_id, Number(w.amount), Number(w.bonus_balance) + newWinBalance, `withdrawal_refund:${id}`]
       );
 
       await client.query('COMMIT');
@@ -541,7 +539,9 @@ module.exports = {   async q(text, params = []) {
         id,
         telegramId: w.telegram_id,
         amount: Number(w.amount),
-        newBalance
+        newBalance: Number(w.bonus_balance) + newWinBalance,
+          bonusBalance: Number(w.bonus_balance) || 0,
+          winBalance: newWinBalance,
       };
     } catch (e) {
       await client.query('ROLLBACK');

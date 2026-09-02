@@ -126,9 +126,11 @@ if (process.env.DATABASE_URL) {
        name,
        phone,
        balance,
+       bonus_balance,
+       win_balance,
        referral_code
      )
-     VALUES($1,$2,$3,10,$4)
+     VALUES($1,$2,$3,10,10,0,$4)
      ON CONFLICT(telegram_id)
      DO UPDATE SET last_seen=NOW(), name=$2
      RETURNING *`,
@@ -137,9 +139,13 @@ if (process.env.DATABASE_URL) {
 
   return r[0];
 },
-      async setBalance(tid, bal) {
-        await this.q('UPDATE users SET balance=$1 WHERE telegram_id=$2', [bal, String(tid)]);
-      },
+        async setBalance(tid, bal) {
+          const u = await this.getUser(tid);
+          if(!u) return;
+          const bonus = parseFloat(u.bonus_balance) || 0;
+          const win = Math.max(0, (parseFloat(bal) || 0) - bonus);
+          await this.q('UPDATE users SET bonus_balance=$1, win_balance=$2, balance=$3 WHERE telegram_id=$4', [bonus, win, bonus + win, String(tid)]);
+        },
       async logTx(tid, type, amount, balAfter, ref) {
         await this.q(
           `INSERT INTO transactions(user_id,type,amount,balance_after,reference)
@@ -202,13 +208,14 @@ if (process.env.DATABASE_URL) {
         if (!r[0]) return null;
         const dep = r[0];
         // Credit balance
-        const u = await this.q('SELECT telegram_id,balance FROM users WHERE id=$1', [dep.user_id]);
-        if (u[0]) {
-          const newBal = parseFloat(u[0].balance) + parseFloat(dep.amount);
-          await this.setBalance(u[0].telegram_id, newBal);
-          await this.logTx(u[0].telegram_id, 'deposit', dep.amount, newBal, dep.tx_ref);
-          return { telegramId: u[0].telegram_id, newBalance: newBal, amount: dep.amount };
-        }
+          const u = await this.q('SELECT telegram_id,bonus_balance,win_balance FROM users WHERE id=$1', [dep.user_id]);
+          if (u[0]) {
+            const newBonus = (parseFloat(u[0].bonus_balance) || 0) + parseFloat(dep.amount);
+            const newBal = newBonus + (parseFloat(u[0].win_balance) || 0);
+            await this.q('UPDATE users SET bonus_balance=$1, balance=$2 WHERE telegram_id=$3', [newBonus, newBal, String(u[0].telegram_id)]);
+            await this.logTx(u[0].telegram_id, 'deposit', dep.amount, newBal, dep.tx_ref);
+            return { telegramId: u[0].telegram_id, newBalance: newBal, bonusBalance: newBonus, winBalance: Number(u[0].win_balance) || 0, amount: dep.amount };
+          }
         return null;
       },
       async rejectDeposit(id) {
@@ -217,11 +224,12 @@ if (process.env.DATABASE_URL) {
 
       // ── Withdrawals ──
       async createWithdrawal(tid, amount, withdrawPhone) {
-        const u = await this.getUser(tid);
-        if (!u || parseFloat(u.balance) < amount) return { error: 'Insufficient balance' };
-        const newBal = parseFloat(u.balance) - amount;
-        await this.setBalance(tid, newBal);
-        await this.logTx(tid, 'withdrawal_pending', -amount, newBal, 'pending');
+          const u = await this.getUser(tid);
+          if (!u || (parseFloat(u.win_balance) || 0) < amount) return { error: 'Insufficient Win Balance' };
+          const newWin = (parseFloat(u.win_balance) || 0) - amount;
+          const newBal = (parseFloat(u.bonus_balance) || 0) + newWin;
+          await this.q('UPDATE users SET win_balance=$1, balance=$2 WHERE telegram_id=$3', [newWin, newBal, String(tid)]);
+          await this.logTx(tid, 'withdrawal_pending', -amount, newBal, 'pending');
         const r = await this.q(
           `INSERT INTO withdrawal_requests(user_id,amount,withdraw_phone,status)
  SELECT id,$2,$3,'pending'
@@ -246,9 +254,13 @@ if (process.env.DATABASE_URL) {
         );
         if (!r[0]) return null;
         const wr = r[0];
-        const u = await this.q('SELECT telegram_id FROM users WHERE id=$1', [wr.user_id]);
-        if (u[0]) await this.logTx(u[0].telegram_id, 'withdrawal', -wr.amount, 0, 'approved');
-        return { telegramId: u[0]?.telegram_id, amount: wr.amount };
+          const u = await this.q('SELECT telegram_id,bonus_balance,win_balance FROM users WHERE id=$1', [wr.user_id]);
+          if (u[0]) {
+            const balanceAfter = (parseFloat(u[0].bonus_balance) || 0) + (parseFloat(u[0].win_balance) || 0);
+            await this.logTx(u[0].telegram_id, 'withdrawal', -wr.amount, balanceAfter, 'approved');
+            return { telegramId: u[0].telegram_id, amount: wr.amount, newBalance: balanceAfter, bonusBalance: Number(u[0].bonus_balance) || 0, winBalance: Number(u[0].win_balance) || 0 };
+          }
+          return { telegramId: undefined, amount: wr.amount };
       },
       async rejectWithdrawal(id) {
         // Refund the balance
@@ -257,13 +269,14 @@ if (process.env.DATABASE_URL) {
         );
         if (!r[0]) return null;
         const wr = r[0];
-        const u = await this.q('SELECT telegram_id,balance FROM users WHERE id=$1', [wr.user_id]);
-        if (u[0]) {
-          const newBal = parseFloat(u[0].balance) + parseFloat(wr.amount);
-          await this.setBalance(u[0].telegram_id, newBal);
-          await this.logTx(u[0].telegram_id, 'withdrawal_refund', wr.amount, newBal, 'rejected');
-          return { telegramId: u[0].telegram_id, newBalance: newBal };
-        }
+          const u = await this.q('SELECT telegram_id,bonus_balance,win_balance FROM users WHERE id=$1', [wr.user_id]);
+          if (u[0]) {
+            const newWin = (parseFloat(u[0].win_balance) || 0) + parseFloat(wr.amount);
+            const newBal = (parseFloat(u[0].bonus_balance) || 0) + newWin;
+            await this.q('UPDATE users SET win_balance=$1, balance=$2 WHERE telegram_id=$3', [newWin, newBal, String(u[0].telegram_id)]);
+            await this.logTx(u[0].telegram_id, 'withdrawal_refund', wr.amount, newBal, 'rejected');
+            return { telegramId: u[0].telegram_id, newBalance: newBal, bonusBalance: Number(u[0].bonus_balance) || 0, winBalance: newWin };
+          }
         return null;
       },
 
@@ -567,12 +580,59 @@ const clients={}, rooms={}, userCache={};
 
 // ─── USER HELPERS ────────────────────────────────────────────
 async function loadUser(tid) {
-  if(db){try{const u=await db.getUser(tid);if(u){userCache[tid] = { name: u.name, phone: u.phone, balance: parseFloat(u.balance), isAdmin: u.is_admin === true };}}catch(e){}}
+  if(db){try{const u=await db.getUser(tid);if(u){userCache[tid] = { name: u.name, phone: u.phone, balance: parseFloat(u.balance), bonusBalance: parseFloat(u.bonus_balance || 0), winBalance: parseFloat(u.win_balance || 0), isAdmin: u.is_admin === true };}}catch(e){}}
   return userCache[tid]||null;
 }
-async function saveBalance(tid, bal) {
-  if(userCache[tid]) userCache[tid].balance=bal;
-  if(db&&tid){try{await db.setBalance(tid,bal);}catch(e){}}
+async function saveWallet(tid, bonusBalance, winBalance) {
+  const bonus = parseFloat(bonusBalance) || 0;
+  const win = parseFloat(winBalance) || 0;
+  const total = bonus + win;
+
+  if(userCache[tid]){
+    userCache[tid].bonusBalance = bonus;
+    userCache[tid].winBalance = win;
+    userCache[tid].balance = total;
+  }
+
+  if(db&&tid){
+    try{
+      await db.setWallet(tid, bonus, win);
+    }catch(e){}
+  }
+
+  return total;
+}
+
+
+async function deductWallet(tid, amount) {
+  const c = clients[Object.keys(clients).find(id => clients[id]?.telegramId === tid)];
+  if(!c) return false;
+
+  let bonus = parseFloat(c.bonusBalance) || 0;
+  let win = parseFloat(c.winBalance) || 0;
+  const stake = parseFloat(amount) || 0;
+
+  if(bonus + win < stake) return false;
+
+  const fromBonus = Math.min(bonus, stake);
+  const fromWin = stake - fromBonus;
+
+  bonus -= fromBonus;
+  win -= fromWin;
+
+  await saveWallet(tid, bonus, win);
+
+  c.balance = bonus + win;
+  c.bonusBalance = bonus;
+  c.winBalance = win;
+
+  return {
+    fromBonus,
+    fromWin,
+    bonusBalance: bonus,
+    winBalance: win,
+    balance: c.balance
+  };
 }
 
 // ─── ROOM HELPERS ────────────────────────────────────────────
@@ -765,30 +825,7 @@ function startCountdown(room){
     }
   },1000);
 }
-
 async function startGame(room){
-  for(const p of room.players){
-    if(!p.cardId&&!p.cardId2) continue; // spectator
-    if(!p.hasPaid){
-      const cl=clients[p.playerId];
-      // Charge once per card selected
-      const numCards=(p.cardId?1:0)+(p.cardId2?1:0);
-      const totalCost=room.stake*numCards;
-      if(cl&&cl.balance>=totalCost){
-        cl.balance-=totalCost; p.hasPaid=true;
-        await saveBalance(cl.telegramId,cl.balance);
-        if(db&&cl.telegramId){try{await db.logTx(cl.telegramId,'stake',-totalCost,cl.balance,room.roomId);}catch(e){}}
-        send(p.ws,{type:'balanceUpdate',balance:cl.balance});
-      } else {
-        // Can't afford — spectator
-        if(p.cardId){room.takenCardIds.delete(p.cardId);p.cardId=null;}
-        if(p.cardId2){room.takenCardIds.delete(p.cardId2);p.cardId2=null;}
-        continue;
-      }
-    }
-  }
-  room.status='playing';
-  // Count paid cards (each card = one stake)
    const paidCards=room.players.reduce(
   (s,p)=>s+(p.hasPaid?((p.cardId?1:0)+(p.cardId2?1:0)):0),
   0
@@ -993,11 +1030,31 @@ async function endGame(room, winners, customMsg, noWinner){
     for(const w of winners){
       const cl=clients[w.playerId];
       if(cl){
-        cl.balance+=winAmount;
+        cl.winBalance=(parseFloat(cl.winBalance)||0)+winAmount;
         winnerTids.push(cl.telegramId||'');
-        await saveBalance(cl.telegramId,cl.balance);
-        if(db&&cl.telegramId){try{await db.logTx(cl.telegramId,'win',winAmount,cl.balance,room.roomId);}catch(e){}}
-        send(w.ws,{type:'balanceUpdate',balance:cl.balance});
+        await saveWallet(
+          cl.telegramId,
+          cl.bonusBalance,
+          cl.winBalance
+        );
+        cl.balance=(parseFloat(cl.bonusBalance)||0)+(parseFloat(cl.winBalance)||0);
+        if(db&&cl.telegramId){
+          try{
+            await db.logTx(
+              cl.telegramId,
+              'win',
+              winAmount,
+              cl.balance,
+              room.roomId
+            );
+          }catch(e){}
+        }
+        send(w.ws,{
+          type:'balanceUpdate',
+          balance:cl.balance,
+          bonusBalance:cl.bonusBalance,
+          winBalance:cl.winBalance
+        });
       }
     }
   }
@@ -1110,11 +1167,12 @@ async function leaveRoom(client){
   const refundAmount = room.stake * cardCount;
 
   if(refundAmount > 0){
-    client.balance += refundAmount;
+    client.bonusBalance=(parseFloat(client.bonusBalance)||0)+(p.card1StakeFromBonus||0)+(p.card2StakeFromBonus||0); client.winBalance=(parseFloat(client.winBalance)||0)+(p.card1StakeFromWin||0)+(p.card2StakeFromWin||0); client.balance=client.bonusBalance+client.winBalance;
 
-    await saveBalance(
+    await saveWallet(
       client.telegramId,
-      client.balance
+      client.bonusBalance,
+      client.winBalance
     );
 
     if(db && client.telegramId){
@@ -1129,10 +1187,7 @@ async function leaveRoom(client){
       }catch(e){}
     }
 
-    send(client.ws,{
-      type:'balanceUpdate',
-      balance:client.balance
-    });
+      send(client.ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
   }
 
   p.hasPaid=false;
@@ -1199,13 +1254,17 @@ wss.on('connection',(ws)=>{
           if(user){
             client.telegramId=tid;
             client.playerName=user.name;
-            client.balance=user.balance;
+            client.balance=(user.bonusBalance||0)+(user.winBalance||0);
+            client.bonusBalance=user.bonusBalance||0;
+            client.winBalance=user.winBalance||0;
             client.isAdmin=user.isAdmin||isAdminPhone(user.phone);
 
             send(ws,{
               type:'authSuccess',
               playerName:user.name,
-              balance:user.balance,
+              balance:client.balance,
+              bonusBalance:client.bonusBalance,
+              winBalance:client.winBalance,
               isRegistered:true,
               isAdmin:client.isAdmin,
               adminToken:client.isAdmin?ADMIN_PHONE:undefined,
@@ -1218,6 +1277,8 @@ wss.on('connection',(ws)=>{
               type:'authSuccess',
               playerName:'',
               balance:10,
+              bonusBalance:10,
+              winBalance:0,
               isRegistered:false,
               isAdmin:false,
               stakes:lobbyStakes
@@ -1644,13 +1705,21 @@ case 'selectCard':{
 
             if(!p.hasPaid){
 
-              client.balance-=room.stake;
-              p.hasPaid=true;
-
-              await saveBalance(
+              const deduction = await deductWallet(
                 client.telegramId,
-                client.balance
+                room.stake
               );
+
+              if(!deduction){
+                return send(ws,{
+                  type:'error',
+                  message:`Need ${room.stake} ETB. Please deposit.`
+                });
+              }
+
+              p.hasPaid=true;
+              p.card1StakeFromBonus=deduction.fromBonus;
+              p.card1StakeFromWin=deduction.fromWin;
 
               if(db&&client.telegramId){
                 try{
@@ -1664,10 +1733,7 @@ case 'selectCard':{
                 }catch(e){}
               }
 
-              send(ws,{
-                type:'balanceUpdate',
-                balance:client.balance
-              });
+                send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
             }
 
             p.cardId=cardId;
@@ -1690,12 +1756,20 @@ case 'selectCard':{
 
             if(!p.cardId2){
 
-              client.balance-=room.stake;
-
-              await saveBalance(
+              const deduction = await deductWallet(
                 client.telegramId,
-                client.balance
+                room.stake
               );
+
+              if(!deduction){
+                return send(ws,{
+                  type:'error',
+                  message:`Need ${room.stake} ETB more for second card.`
+                });
+              }
+
+              p.card2StakeFromBonus=deduction.fromBonus;
+              p.card2StakeFromWin=deduction.fromWin;
 
               if(db&&client.telegramId){
                 try{
@@ -1709,10 +1783,7 @@ case 'selectCard':{
                 }catch(e){}
               }
 
-              send(ws,{
-                type:'balanceUpdate',
-                balance:client.balance
-              });
+              send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
             }
 
             p.cardId2=cardId;
@@ -1791,13 +1862,22 @@ case 'selectCard':{
             room.takenCardIds.delete(releasedId);
             p.cardId2=null;
 
-            // Refund Card 2 stake ONLY
-            client.balance+=room.stake;
+            // Refund Card 2 stake to the same wallet sources
+            const refundBonus=p.card2StakeFromBonus||0;
+            const refundWin=p.card2StakeFromWin||0;
 
-            await saveBalance(
+            client.bonusBalance=(parseFloat(client.bonusBalance)||0)+refundBonus;
+            client.winBalance=(parseFloat(client.winBalance)||0)+refundWin;
+
+            await saveWallet(
               client.telegramId,
-              client.balance
+              client.bonusBalance,
+              client.winBalance
             );
+              client.balance=client.bonusBalance+client.winBalance;
+
+            p.card2StakeFromBonus=0;
+            p.card2StakeFromWin=0;
 
             if(db&&client.telegramId){
               try{
@@ -1811,10 +1891,7 @@ case 'selectCard':{
               }catch(e){}
             }
 
-            send(ws,{
-              type:'balanceUpdate',
-              balance:client.balance
-            });
+              send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
 
             broadcastCardDiff(
               room,
@@ -1834,14 +1911,23 @@ case 'selectCard':{
             room.takenCardIds.delete(releasedId);
             p.cardId=null;
 
-            // Refund Card 1 stake ONLY
-            client.balance+=room.stake;
-            p.hasPaid=false;
+            // Refund Card 1 stake to the same wallet sources
+            const refundBonus=p.card1StakeFromBonus||0;
+            const refundWin=p.card1StakeFromWin||0;
 
-            await saveBalance(
+            client.bonusBalance=(parseFloat(client.bonusBalance)||0)+refundBonus;
+            client.winBalance=(parseFloat(client.winBalance)||0)+refundWin;
+
+            await saveWallet(
               client.telegramId,
-              client.balance
+              client.bonusBalance,
+              client.winBalance
             );
+              client.balance=client.bonusBalance+client.winBalance;
+
+            p.card1StakeFromBonus=0;
+            p.card1StakeFromWin=0;
+            p.hasPaid=false;
 
             if(db&&client.telegramId){
               try{
@@ -1855,10 +1941,7 @@ case 'selectCard':{
               }catch(e){}
             }
 
-            send(ws,{
-              type:'balanceUpdate',
-              balance:client.balance
-            });
+              send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
 
             broadcastCardDiff(
               room,
@@ -1957,8 +2040,8 @@ case 'selectCard':{
             }catch(e){console.error('Deposit error:',e.message); send(ws,{type:'error',message:'Deposit failed: '+e.message});}
           } else {
             // Memory mode: auto-approve
-            client.balance+=amount;
-            send(ws,{type:'balanceUpdate',balance:client.balance});
+            client.bonusBalance=(parseFloat(client.bonusBalance)||0)+amount; client.balance=client.bonusBalance+(parseFloat(client.winBalance)||0);
+              send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
             send(ws,{type:'depositSubmitted',message:'Deposit approved (demo mode).'});
           }
           break;
@@ -1968,7 +2051,7 @@ case 'selectCard':{
         case 'withdrawalRequest':{
           const{amount,withdrawPhone}=msg;
           if(!amount||amount<100) return send(ws,{type:'error',message:'Minimum withdrawal is 100 ETB.'});
-          if(client.balance<amount) return send(ws,{type:'error',message:'Insufficient balance.'});
+          if((parseFloat(client.winBalance)||0)<amount) return send(ws,{type:'error',message:'Insufficient Win Balance.'});
           if(!client.telegramId) return send(ws,{type:'error',message:'Please register first.'});
           if(db){
             try{
@@ -2012,13 +2095,13 @@ case 'selectCard':{
     console.error('Admin withdrawal notification error:', e.message);
   }
 }
-              client.balance=result.newBalance;
-              send(ws,{type:'balanceUpdate',balance:client.balance});
+              client.bonusBalance=result.bonusBalance; client.winBalance=result.winBalance; client.balance=result.newBalance;
+                send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
               send(ws,{type:'withdrawalSubmitted',message:'Withdrawal request submitted! Admin will process it soon.'});
             }catch(e){send(ws,{type:'error',message:'Failed to submit withdrawal.'});}
           } else {
-            client.balance-=amount;
-            send(ws,{type:'balanceUpdate',balance:client.balance});
+            client.winBalance=(parseFloat(client.winBalance)||0)-amount; client.balance=(parseFloat(client.bonusBalance)||0)+client.winBalance;
+              send(ws,{type:"balanceUpdate",balance:client.balance,bonusBalance:client.bonusBalance,winBalance:client.winBalance});
             send(ws,{type:'withdrawalSubmitted',message:'Withdrawal submitted (demo mode).'});
           }
           break;
@@ -2100,7 +2183,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, async(req,res)=>{
   if(result){
     // Push balance update to connected user
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`✅ Deposit of ${result.amount} ETB approved!`});}
+      if(cl){cl.bonusBalance=result.bonusBalance;cl.winBalance=result.winBalance;cl.balance=result.newBalance;send(cl.ws,{type:"balanceUpdate",balance:result.newBalance,bonusBalance:result.bonusBalance,winBalance:result.winBalance});send(cl.ws,{type:"notification",message:`✅ Deposit of ${result.amount} ETB approved!`});}
   }
   res.json({ok:true,result});
 });
@@ -2128,7 +2211,7 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, async(req,res)=>{
   const result=await db.rejectWithdrawal(parseInt(req.params.id));
   if(result){
     const cl=Object.values(clients).find(c=>c.telegramId===String(result.telegramId));
-    if(cl){cl.balance=result.newBalance;send(cl.ws,{type:'balanceUpdate',balance:result.newBalance});send(cl.ws,{type:'notification',message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
+      if(cl){cl.bonusBalance=result.bonusBalance;cl.winBalance=result.winBalance;cl.balance=result.newBalance;send(cl.ws,{type:"balanceUpdate",balance:result.newBalance,bonusBalance:result.bonusBalance,winBalance:result.winBalance});send(cl.ws,{type:"notification",message:`❌ Withdrawal rejected. ${result.newBalance} ETB refunded.`});}
   }
   res.json({ok:true,result});
 });
@@ -2604,13 +2687,11 @@ bot.onText(/🎮 Play Now/, async msg => {
         });
 
         await bot.editMessageReplyMarkup(
-          { inline_keyboard: [] },
           {
             chat_id: query.message.chat.id,
             message_id: query.message.message_id
           }
         );
-
         await bot.sendMessage(
           ADMIN_TELEGRAM_ID,
           `✅ *Deposit Approved*\n\n` +
@@ -2764,10 +2845,10 @@ bot.on('contact', async msg => {
       try{
         const u = await db.createUser(String(tid), name, phone);
         balance = parseFloat(u.balance);
-        userCache[String(tid)] = { name, phone, balance, isAdmin: isAdminPhone(phone) };
+        userCache[String(tid)] = { name, phone, balance, bonusBalance: parseFloat(u.bonus_balance) || 0, winBalance: parseFloat(u.win_balance) || 0, isAdmin: isAdminPhone(phone) };
       } catch(e){ console.error('createUser error:', e.message); }
     } else {
-      userCache[String(tid)] = { name, phone, balance:10, isAdmin: isAdminPhone(phone) };
+      userCache[String(tid)] = { name, phone, balance:10, bonusBalance:10, winBalance:0, isAdmin: isAdminPhone(phone) };
     }
     bot.sendMessage(msg.chat.id,
       `✅ *Registered Successfully!*\n\n👤 Name: *${name}*\n📱 Phone: ${phone}\n💰 Balance: *${balance} ETB*\n\nDeposit ETB to start playing! 🎱`,

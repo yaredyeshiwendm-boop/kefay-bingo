@@ -14,6 +14,8 @@ CREATE TABLE users (
   name            VARCHAR(50) NOT NULL,
   phone           VARCHAR(20),
   balance         NUMERIC(10,2) DEFAULT 500.00,
+  bonus_balance   NUMERIC(10,2) DEFAULT 10.00,
+  win_balance     NUMERIC(10,2) DEFAULT 0.00,
   referral_code   VARCHAR(20) UNIQUE,
   referrer_id     INT REFERENCES users(id),
   referral_bonus  NUMERIC(10,2) DEFAULT 0,
@@ -105,47 +107,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Deduct stake from balance (atomic)
-CREATE OR REPLACE FUNCTION deduct_stake(
-  p_user_id INT,
-  p_amount NUMERIC,
-  p_game_id INT
-) RETURNS NUMERIC AS $$
-DECLARE v_new_balance NUMERIC;
+-- Deduct stake: Bonus Balance first, then Win Balance
+CREATE OR REPLACE FUNCTION deduct_stake(p_user_id INT,p_amount NUMERIC,p_game_id INT) RETURNS NUMERIC AS $$
+DECLARE v_bonus NUMERIC; v_win NUMERIC; v_total NUMERIC; v_from_bonus NUMERIC; v_from_win NUMERIC;
 BEGIN
-  UPDATE users SET balance = balance - p_amount
-  WHERE id = p_user_id AND balance >= p_amount
-  RETURNING balance INTO v_new_balance;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Insufficient balance';
-  END IF;
-
-  INSERT INTO transactions(user_id, type, amount, balance_after, reference)
-  VALUES(p_user_id, 'stake', -p_amount, v_new_balance, p_game_id::TEXT);
-
-  RETURN v_new_balance;
+  SELECT bonus_balance,win_balance INTO v_bonus,v_win FROM users WHERE id=p_user_id FOR UPDATE;
+  IF NOT FOUND OR COALESCE(v_bonus,0)+COALESCE(v_win,0)<p_amount THEN RAISE EXCEPTION 'Insufficient balance'; END IF;
+  v_bonus:=COALESCE(v_bonus,0); v_win:=COALESCE(v_win,0); v_from_bonus:=LEAST(v_bonus,p_amount); v_from_win:=p_amount-v_from_bonus;
+  v_bonus:=v_bonus-v_from_bonus; v_win:=v_win-v_from_win; v_total:=v_bonus+v_win;
+  UPDATE users SET bonus_balance=v_bonus,win_balance=v_win,balance=v_total WHERE id=p_user_id;
+  INSERT INTO transactions(user_id,type,amount,balance_after,reference) VALUES(p_user_id,'stake',-p_amount,v_total,p_game_id::TEXT);
+  RETURN v_total;
 END;
 $$ LANGUAGE plpgsql;
 
--- Award winnings
-CREATE OR REPLACE FUNCTION award_win(
-  p_user_id INT,
-  p_amount NUMERIC,
-  p_game_id INT
-) RETURNS NUMERIC AS $$
-DECLARE v_new_balance NUMERIC;
+-- Award winnings to Win Balance only
+CREATE OR REPLACE FUNCTION award_win(p_user_id INT,p_amount NUMERIC,p_game_id INT) RETURNS NUMERIC AS $$
+DECLARE v_total NUMERIC;
 BEGIN
-  UPDATE users
-  SET balance = balance + p_amount,
-      total_wins = total_wins + 1,
-      total_winnings = total_winnings + p_amount
-  WHERE id = p_user_id
-  RETURNING balance INTO v_new_balance;
-
-  INSERT INTO transactions(user_id, type, amount, balance_after, reference)
-  VALUES(p_user_id, 'win', p_amount, v_new_balance, p_game_id::TEXT);
-
-  RETURN v_new_balance;
+  UPDATE users SET win_balance=COALESCE(win_balance,0)+p_amount,balance=COALESCE(bonus_balance,0)+COALESCE(win_balance,0)+p_amount,total_wins=total_wins+1,total_winnings=total_winnings+p_amount WHERE id=p_user_id RETURNING balance INTO v_total;
+  INSERT INTO transactions(user_id,type,amount,balance_after,reference) VALUES(p_user_id,'win',p_amount,v_total,p_game_id::TEXT);
+  RETURN v_total;
 END;
 $$ LANGUAGE plpgsql;
 
