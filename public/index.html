@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
 <title>Kefay Bingo</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -1175,6 +1176,13 @@ function openTelegramRegistration(){
     window.open('https://t.me/Kefay_bingo_bot?start=register', '_blank');
   }
 }
+
+try{
+  if(window.Telegram && Telegram.WebApp){
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+  }
+}catch(e){console.error("Telegram WebApp init error:",e);}
 
 function getTelegramId(){
   const p=new URLSearchParams(location.search);
